@@ -22,3 +22,4 @@ This file tracks meaningful standby work Annie performs on this repository.
 - Added repo healthcheck, weekly refactor pass, and branch cleanup automation.
 - Chose Annie product direction: internal leverage tools first.
 - Chose phased roadmap: Control Center → Automation Toolbox → Opportunity/Profit Layer.
+- Added a Phase 1 control center layer to the feed page: active priorities from `TODO.md`, a busy-now work panel, and an upcoming agenda sourced from cron state.

@@ -64,10 +64,10 @@ Core goals:
 
 ### P0 - Phase 1 Build Targets
 
-- [ ] Add an active priorities panel to Mission Control.
+- [x] Add an active priorities panel to Mission Control.
 - [ ] Add a real tasks/work tracker layer instead of just raw sessions and cron jobs.
-- [ ] Add a clearer “what Annie is busy with now” surface.
-- [ ] Add a daily inbox/agenda style summary view.
+- [x] Add a clearer “what Annie is busy with now” surface.
+- [x] Add a daily inbox/agenda style summary view.
 - [ ] Add a compact mobile-friendly command center view.
 
 ### P0 - Reliability
@@ -112,3 +112,4 @@ Core goals:
 - [x] Linked repository to GitHub via SSH.
 - [x] Enabled Annie standby coder mode with commit/push/branch permissions.
 - [x] Added Annie Mission Control branding, resource usage, and dashboard chat.
+- [x] Added a Phase 1 control center strip on the feed page with active priorities, a busy-now panel, and an upcoming agenda view.

@@ -13,6 +13,7 @@ const OPENCLAW_STATE_DIR = "/root/.openclaw";
 const OPENCLAW_AGENT_DIR = path.join(OPENCLAW_STATE_DIR, "agents", "main", "sessions");
 const OPENCLAW_SESSIONS_INDEX = path.join(OPENCLAW_AGENT_DIR, "sessions.json");
 const OPENCLAW_CRON_JOBS_FILE = path.join(OPENCLAW_STATE_DIR, "cron", "jobs.json");
+const TODO_FILE = "/root/projects/mission-control/TODO.md";
 const DEFAULT_CONTEXT_TOKENS = 272000;
 
 const cache = new Map<string, { expiresAt: number; value: unknown }>();
@@ -151,6 +152,39 @@ type ResourceSnapshot = {
   pidsLimit: number;
   diskUsedBytes: number;
   diskTotalBytes: number;
+};
+
+export type PriorityItem = {
+  id: string;
+  group: string;
+  text: string;
+};
+
+export type ActiveWorkItem = {
+  id: string;
+  title: string;
+  detail: string;
+  status: string;
+  updatedAt: number;
+  source: "task" | "session" | "cron";
+};
+
+export type AgendaItem = {
+  id: string;
+  title: string;
+  detail: string;
+  timestamp: number;
+};
+
+export type ControlCenterData = {
+  priorities: PriorityItem[];
+  activeWork: ActiveWorkItem[];
+  agenda: AgendaItem[];
+  summary: {
+    openPriorities: number;
+    activeNow: number;
+    upcomingJobs: number;
+  };
 };
 
 export type TimelineItem = {
@@ -378,6 +412,111 @@ async function getTasks() {
     } catch {
       return { count: 0, tasks: [] } satisfies TasksListResponse;
     }
+  });
+}
+
+async function getPriorityItems() {
+  return withCache("todo-priorities", 15_000, async () => {
+    try {
+      const raw = await fs.readFile(TODO_FILE, "utf8");
+      const lines = raw.split("\n");
+      const items: PriorityItem[] = [];
+      let inCurrentPriorities = false;
+      let currentGroup = "Current Priorities";
+
+      for (const line of lines) {
+        const headingMatch = line.match(/^(#{2,3})\s+(.*)$/);
+        if (headingMatch) {
+          const heading = headingMatch[2].trim();
+          if (headingMatch[1] === "##") {
+            inCurrentPriorities = heading === "Current Priorities";
+            currentGroup = heading;
+          } else if (inCurrentPriorities && headingMatch[1] === "###") {
+            currentGroup = heading;
+          }
+          continue;
+        }
+
+        if (!inCurrentPriorities) continue;
+        const todoMatch = line.match(/^- \[ \] (.+)$/);
+        if (!todoMatch) continue;
+
+        items.push({
+          id: `${currentGroup}-${items.length}`,
+          group: currentGroup,
+          text: todoMatch[1].trim(),
+        });
+      }
+
+      return items;
+    } catch {
+      return [] as PriorityItem[];
+    }
+  });
+}
+
+function normalizeTaskStatus(status?: string) {
+  if (!status) return "unknown";
+  return status.replace(/[_-]+/g, " ");
+}
+
+export async function getControlCenterData() {
+  return withCache("control-center", 10_000, async () => {
+    const [priorities, tasks, sessions, jobs] = await Promise.all([
+      getPriorityItems(),
+      getTasks(),
+      getSessions(),
+      getCronJobs(),
+    ]);
+
+    const activeTaskStatuses = new Set(["queued", "pending", "running", "active", "in_progress"]);
+    const activeWork: ActiveWorkItem[] = [
+      ...tasks.tasks
+        .filter((task) => activeTaskStatuses.has((task.status || "").toLowerCase()))
+        .map((task) => ({
+          id: `task-${task.taskId || task.runId || task.sessionKey || Math.random()}`,
+          title: task.title || task.runtime || task.taskId || "Task",
+          detail: task.summary || task.sessionKey || "OpenClaw task",
+          status: normalizeTaskStatus(task.status),
+          updatedAt: task.updatedAtMs || task.startedAtMs || task.createdAtMs || 0,
+          source: "task" as const,
+        })),
+      ...sessions.sessions
+        .filter((session) => (session.ageMs || Number.POSITIVE_INFINITY) < 30 * 60_000)
+        .slice(0, 6)
+        .map((session) => ({
+          id: `session-${session.key}`,
+          title: session.key,
+          detail: `${session.model || "unknown"} · ${session.kind || "session"}`,
+          status: (session.ageMs || 0) < 120_000 ? "running" : "recent",
+          updatedAt: session.updatedAt || 0,
+          source: session.key.includes(":cron:") ? ("cron" as const) : ("session" as const),
+        })),
+    ]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 8);
+
+    const agenda = jobs.jobs
+      .filter((job) => job.enabled !== false && typeof job.state?.nextRunAtMs === "number")
+      .sort((a, b) => (a.state?.nextRunAtMs || 0) - (b.state?.nextRunAtMs || 0))
+      .slice(0, 6)
+      .map((job) => ({
+        id: job.id,
+        title: job.name || "Untitled job",
+        detail: job.description || job.payload?.message || job.payload?.text || job.schedule?.expr || job.schedule?.kind || "Scheduled job",
+        timestamp: job.state?.nextRunAtMs || 0,
+      }));
+
+    return {
+      priorities: priorities.slice(0, 8),
+      activeWork,
+      agenda,
+      summary: {
+        openPriorities: priorities.length,
+        activeNow: activeWork.length,
+        upcomingJobs: agenda.length,
+      },
+    } satisfies ControlCenterData;
   });
 }
 
