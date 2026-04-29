@@ -51,6 +51,13 @@ type SessionsListResponse = {
   sessions: Session[];
 };
 
+type SourceHealth = {
+  key: "todo" | "tasks" | "sessions" | "cron";
+  label: string;
+  status: "ok" | "degraded";
+  detail: string;
+};
+
 type MessagePart = {
   type: "text" | "toolCall" | "thinking" | string;
   text?: string;
@@ -185,6 +192,14 @@ export type ControlCenterData = {
     activeNow: number;
     upcomingJobs: number;
   };
+  focus: {
+    headline: string;
+    note: string;
+  };
+  meta: {
+    generatedAt: number;
+    sources: SourceHealth[];
+  };
 };
 
 export type TimelineItem = {
@@ -233,28 +248,35 @@ async function runOpenClawText(args: string[], timeout = 15_000) {
 
 export async function getSessions() {
   return withCache("sessions", 5_000, async () => {
-    const index = await readJsonFile<Record<string, Record<string, unknown>>>(OPENCLAW_SESSIONS_INDEX);
-    const sessions = Object.entries(index).map(([key, value]) => ({
-      key,
-      sessionId: String(value.sessionId || ""),
-      updatedAt: Number(value.updatedAt || 0),
-      ageMs: Number(value.ageMs || (value.updatedAt ? Date.now() - Number(value.updatedAt) : 0)),
-      totalTokens: typeof value.totalTokens === "number" ? value.totalTokens : null,
-      contextTokens: typeof value.contextTokens === "number" ? value.contextTokens : DEFAULT_CONTEXT_TOKENS,
-      model: typeof value.model === "string" ? value.model : "gpt-5.4",
-      agentId: typeof value.agentId === "string" ? value.agentId : "main",
-      kind: typeof value.chatType === "string" ? value.chatType : typeof value.kind === "string" ? value.kind : "direct",
-      systemSent: Boolean(value.systemSent),
-      abortedLastRun: Boolean(value.abortedLastRun),
-      inputTokens: typeof value.inputTokens === "number" ? value.inputTokens : undefined,
-      outputTokens: typeof value.outputTokens === "number" ? value.outputTokens : undefined,
-    })) satisfies Session[];
+    try {
+      const index = await readJsonFile<Record<string, Record<string, unknown>>>(OPENCLAW_SESSIONS_INDEX);
+      const sessions = Object.entries(index).map(([key, value]) => ({
+        key,
+        sessionId: String(value.sessionId || ""),
+        updatedAt: Number(value.updatedAt || 0),
+        ageMs: Number(value.ageMs || (value.updatedAt ? Date.now() - Number(value.updatedAt) : 0)),
+        totalTokens: typeof value.totalTokens === "number" ? value.totalTokens : null,
+        contextTokens: typeof value.contextTokens === "number" ? value.contextTokens : DEFAULT_CONTEXT_TOKENS,
+        model: typeof value.model === "string" ? value.model : "gpt-5.4",
+        agentId: typeof value.agentId === "string" ? value.agentId : "main",
+        kind: typeof value.chatType === "string" ? value.chatType : typeof value.kind === "string" ? value.kind : "direct",
+        systemSent: Boolean(value.systemSent),
+        abortedLastRun: Boolean(value.abortedLastRun),
+        inputTokens: typeof value.inputTokens === "number" ? value.inputTokens : undefined,
+        outputTokens: typeof value.outputTokens === "number" ? value.outputTokens : undefined,
+      })) satisfies Session[];
 
-    sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return {
-      count: sessions.length,
-      sessions,
-    } satisfies SessionsListResponse;
+      sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+      return {
+        count: sessions.length,
+        sessions,
+      } satisfies SessionsListResponse;
+    } catch {
+      return {
+        count: 0,
+        sessions: [],
+      } satisfies SessionsListResponse;
+    }
   });
 }
 
@@ -460,6 +482,37 @@ function normalizeTaskStatus(status?: string) {
   return status.replace(/[_-]+/g, " ");
 }
 
+function buildFocusSummary(priorities: PriorityItem[], activeWork: ActiveWorkItem[], agenda: AgendaItem[]) {
+  const runningWork = activeWork.filter((item) => item.status.toLowerCase() === "running");
+  const nextJob = agenda[0];
+
+  if (runningWork.length) {
+    return {
+      headline: `Annie is actively moving ${runningWork.length} thread${runningWork.length === 1 ? "" : "s"}.`,
+      note: runningWork[0]?.title || "Live work is underway right now.",
+    };
+  }
+
+  if (priorities.length && activeWork.length) {
+    return {
+      headline: `There are ${priorities.length} open priorities and ${activeWork.length} recent work signal${activeWork.length === 1 ? "" : "s"}.`,
+      note: `Best next glance: ${priorities[0]?.text || "Review the top backlog item."}`,
+    };
+  }
+
+  if (nextJob) {
+    return {
+      headline: "The board is calm, but the next automation beat is queued.",
+      note: `${nextJob.title} at ${formatTimestamp(nextJob.timestamp)}`,
+    };
+  }
+
+  return {
+    headline: "Mission Control is quiet right now.",
+    note: "No active work or upcoming jobs surfaced from local state.",
+  };
+}
+
 export async function getControlCenterData() {
   return withCache("control-center", 10_000, async () => {
     const [priorities, tasks, sessions, jobs] = await Promise.all([
@@ -507,6 +560,33 @@ export async function getControlCenterData() {
         timestamp: job.state?.nextRunAtMs || 0,
       }));
 
+    const sources: SourceHealth[] = [
+      {
+        key: "todo",
+        label: "Backlog",
+        status: priorities.length ? "ok" : "degraded",
+        detail: priorities.length ? `${priorities.length} open priorities parsed` : "No TODO priorities found",
+      },
+      {
+        key: "tasks",
+        label: "Tasks",
+        status: tasks.count || activeWork.some((item) => item.source === "task") ? "ok" : "degraded",
+        detail: tasks.count ? `${tasks.count} OpenClaw tasks visible` : "No task entries returned",
+      },
+      {
+        key: "sessions",
+        label: "Sessions",
+        status: sessions.count ? "ok" : "degraded",
+        detail: sessions.count ? `${sessions.count} recent sessions indexed` : "Session index unavailable or empty",
+      },
+      {
+        key: "cron",
+        label: "Cron",
+        status: jobs.jobs.length ? "ok" : "degraded",
+        detail: jobs.jobs.length ? `${jobs.jobs.length} scheduled jobs loaded` : "No cron jobs found",
+      },
+    ];
+
     return {
       priorities: priorities.slice(0, 8),
       activeWork,
@@ -515,6 +595,11 @@ export async function getControlCenterData() {
         openPriorities: priorities.length,
         activeNow: activeWork.length,
         upcomingJobs: agenda.length,
+      },
+      focus: buildFocusSummary(priorities, activeWork, agenda),
+      meta: {
+        generatedAt: Date.now(),
+        sources,
       },
     } satisfies ControlCenterData;
   });

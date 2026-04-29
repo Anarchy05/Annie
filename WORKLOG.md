@@ -23,3 +23,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 - Chose Annie product direction: internal leverage tools first.
 - Chose phased roadmap: Control Center → Automation Toolbox → Opportunity/Profit Layer.
 - Added a Phase 1 control center layer to the feed page: active priorities from `TODO.md`, a busy-now work panel, and an upcoming agenda sourced from cron state.
+- Hardened Mission Control session loading so missing/partial OpenClaw state degrades gracefully instead of breaking the dashboard.
+- Added an Annie-style control-center status strip with focus guidance, source health badges, and manual refresh context.
+- Split feed and control-center loading so one unavailable API no longer blanks the whole dashboard.
+- Rebuilt and restarted the local dashboard service so the live app picked up the current API routes again.

@@ -73,6 +73,7 @@ Core goals:
 ### P0 - Reliability
 
 - [ ] Harden all dashboard API routes against missing/partial local OpenClaw state.
+- [x] Let the feed and control-center panels degrade independently when one live API is unavailable.
 - [ ] Add graceful empty states for every panel/page when backing data is unavailable.
 - [ ] Reduce dashboard service restarts and document stable service management.
 
