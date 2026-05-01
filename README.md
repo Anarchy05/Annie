@@ -31,6 +31,14 @@ Open:
 
 This project is currently run locally on the host via a systemd transient service.
 
+Use the repo helper to restart it under a stable unit name:
+
+```bash
+./scripts/restart-dashboard-service.sh
+```
+
+That avoids the common failure mode where `next start` is relaunched manually on port 3000 while the previous transient unit remains in a failed state.
+
 ## Important repo files
 
 - `STANDBY.md` — Annie standby-coder operating rules

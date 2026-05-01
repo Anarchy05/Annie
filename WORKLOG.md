@@ -13,6 +13,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-01
 
+- Added a `scripts/restart-dashboard-service.sh` helper plus README guidance so the dashboard can be relaunched under a stable transient unit instead of drifting into a failed-unit/manual-process split on port 3000.
 - Added a dedicated Projects workspace page plus `/api/projects` storage so Mission Control can track multiple repos, project status, progress, next steps, and quick file jumps from one place.
 - Hardened project-state loading so malformed or partial `state/projects.json` data falls back safely instead of breaking the project pulse or projects API.
 - Added a new Mission Control "needs attention" layer so the homepage now calls out blockers, missing signals, idle priority pressure, and near-term scheduled work instead of just showing raw lists.
