@@ -11,6 +11,22 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-01
+
+- Added a dedicated Projects workspace page plus `/api/projects` storage so Mission Control can track multiple repos, project status, progress, next steps, and quick file jumps from one place.
+- Hardened project-state loading so malformed or partial `state/projects.json` data falls back safely instead of breaking the project pulse or projects API.
+- Added a new Mission Control "needs attention" layer so the homepage now calls out blockers, missing signals, idle priority pressure, and near-term scheduled work instead of just showing raw lists.
+- Reduced `/api/banner` latency by moving the OpenClaw npm version check into a cached parallel fetch, then rebuilt and restarted the local dashboard so the live app picked up the faster path.
+
+## 2026-04-30
+
+- Hardened the new Files browser so invalid or missing paths fall back safely, available roots are discovered dynamically, and file errors return useful status codes instead of generic failures.
+- Added a more compact mobile-friendly Files table layout plus clearer fallback messaging when Mission Control redirects to a safe root.
+- Added `RELEASE_CHECKLIST.md` for a lightweight dashboard shipping checklist.
+- Added a project pulse panel to the Mission Control homepage so pinned/active projects, progress, and next steps surface alongside live work.
+- Added Annie-style recommendation guidance and source-health badges to make the dashboard more actionable and easier to trust at a glance.
+- Rebuilt and restarted the local dashboard after finding port 3000 still serving a stale prior build.
+
 ## 2026-04-28
 
 - Linked repository to GitHub via SSH.

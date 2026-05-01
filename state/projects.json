@@ -1,0 +1,17 @@
+{
+  "projects": [
+    {
+      "id": "mission-control",
+      "name": "Mission Control",
+      "workspacePath": "/root/projects/mission-control",
+      "repoPath": "git@github.com:Anarchy05/Annie.git",
+      "branch": "main",
+      "status": "active",
+      "progress": 55,
+      "summary": "Control panel cleanup and operator UX improvements.",
+      "nextStep": "Add project/workspace management and tighter multi-project tracking.",
+      "updatedAt": 1777450000000,
+      "pinned": true
+    }
+  ]
+}

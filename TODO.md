@@ -99,7 +99,7 @@ Core goals:
 ### P2 - Repo / Workflow
 
 - [ ] Add a CHANGELOG or WORKLOG for meaningful Annie-made improvements.
-- [ ] Add a lightweight release checklist for dashboard changes.
+- [x] Add a lightweight release checklist for dashboard changes.
 - [ ] Consider adding tests for core dashboard data helpers.
 
 ## Inbox / Ideas
@@ -114,3 +114,5 @@ Core goals:
 - [x] Enabled Annie standby coder mode with commit/push/branch permissions.
 - [x] Added Annie Mission Control branding, resource usage, and dashboard chat.
 - [x] Added a Phase 1 control center strip on the feed page with active priorities, a busy-now panel, and an upcoming agenda view.
+- [x] Added a homepage project pulse with tracked-project progress, next-step guidance, and source-health badges.
+- [x] Added a dedicated Projects page and API-backed tracker for multi-repo workspace status, progress, and next steps.

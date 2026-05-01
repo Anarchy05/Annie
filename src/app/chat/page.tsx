@@ -16,11 +16,16 @@ type PendingAttachment = {
   preview?: string;
 };
 
+type DownloadableFile = {
+  path: string;
+  label: string;
+};
+
 const suggestedPrompts = [
-  "Summarize what Annie is currently busy with.",
-  "Review this dashboard and suggest three killer upgrades.",
-  "Help me plan today around my active sessions and cron jobs.",
-  "Debug a problem step by step with me.",
+  "What matters most today?",
+  "What are you busy with right now?",
+  "Show me the next jobs coming up.",
+  "Help me fix something step by step.",
 ];
 
 export default function ChatPage() {
@@ -56,9 +61,13 @@ export default function ChatPage() {
       }
     };
 
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+
     return () => {
       mounted = false;
+      window.clearTimeout(timer);
     };
   }, []);
 
@@ -121,10 +130,7 @@ export default function ChatPage() {
     const message = input.trim();
     if ((!message && !attachments.length) || sending) return;
 
-    const optimisticText = [
-      message,
-      ...attachments.map((attachment) => `[attachment] ${attachment.file.name}`),
-    ]
+    const optimisticText = [message, ...attachments.map((attachment) => `[attachment] ${attachment.file.name}`)]
       .filter(Boolean)
       .join("\n");
 
@@ -211,36 +217,14 @@ export default function ChatPage() {
 
   return (
     <PageShell>
-      <section className="animate-fade-in grid gap-4 xl:grid-cols-[0.88fr_1.32fr]">
+      <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
         <div className="space-y-4">
           <div className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-            <p className="text-xs uppercase tracking-[0.24em] text-white/45">Direct line</p>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Chat with Annie</h2>
-            <p className="mt-4 text-sm leading-6 text-white/70">
-              This is your dashboard-native Annie chat — polished, persistent, and ready for real work.
-            </p>
-            <div className="mt-6 space-y-3 rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-white/70">
-              <p className="font-medium text-white">Now with:</p>
-              <ul className="list-disc space-y-2 pl-5">
-                <li>markdown-style rendering</li>
-                <li>copyable code blocks</li>
-                <li>file uploads and image context</li>
-                <li>separate persistent web chat memory</li>
-              </ul>
-            </div>
-          </div>
+            <p className="text-xs uppercase tracking-[0.24em] text-white/45">Chat</p>
+            <h2 className="mt-1 text-2xl font-semibold text-white">Talk to Annie</h2>
+            <p className="mt-3 text-sm text-white/70">Quick prompts, file uploads, downloadable outputs, and one clean chat window.</p>
 
-          <div className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-white">Quick prompts</p>
-              <button
-                onClick={() => void handleCopyTranscript()}
-                className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white"
-              >
-                {copyState === "transcript" ? "Copied" : "Copy transcript"}
-              </button>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-2">
               {suggestedPrompts.map((prompt) => (
                 <button
                   key={prompt}
@@ -251,6 +235,7 @@ export default function ChatPage() {
                 </button>
               ))}
             </div>
+
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -259,19 +244,19 @@ export default function ChatPage() {
                 Attach files
               </button>
               <button
+                onClick={() => void handleCopyTranscript()}
+                className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/70 hover:text-white"
+              >
+                {copyState === "transcript" ? "Copied" : "Copy chat"}
+              </button>
+              <button
                 onClick={() => void handleClearChat()}
                 className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100 hover:brightness-110"
               >
                 Clear chat
               </button>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(event) => void handleFilesSelected(event.target.files)}
-            />
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => void handleFilesSelected(event.target.files)} />
           </div>
         </div>
 
@@ -284,9 +269,7 @@ export default function ChatPage() {
             ) : messages.length ? (
               messages.map((message) => <ChatBubble key={message.id} message={message} />)
             ) : (
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-5 text-sm text-white/55">
-                No chat history yet. Say something dangerous, clever, or useful 😏
-              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/20 p-5 text-sm text-white/55">No chat history yet.</div>
             )}
             {sending && (
               <div className="max-w-[92%] rounded-3xl border border-white/8 bg-black/20 p-4 text-sm text-white/60">
@@ -332,7 +315,7 @@ export default function ChatPage() {
                 className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA]"
               />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-white/40">Enter to send · Shift+Enter for newline · up to 6 attachments</p>
+                <p className="text-xs text-white/40">Enter to send · Shift+Enter for newline</p>
                 <button
                   onClick={() => void handleSend()}
                   disabled={sending || !canSend}
@@ -350,23 +333,38 @@ export default function ChatPage() {
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
+  const text = stripMediaLines(message.text);
+  const downloadableFiles = extractDownloadableFiles(message.text);
+
   return (
     <article
       className={`max-w-[92%] rounded-3xl border p-4 ${
-        message.role === "user"
-          ? "ml-auto border-[#60A5FA]/30 bg-[#60A5FA]/10"
-          : "border-white/8 bg-black/20"
+        message.role === "user" ? "ml-auto border-[#60A5FA]/30 bg-[#60A5FA]/10" : "border-white/8 bg-black/20"
       }`}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/45">
-          {message.role === "user" ? "You" : "Annie"}
-        </p>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/45">{message.role === "user" ? "You" : "Annie"}</p>
         <p className="text-xs text-white/35">{new Date(message.timestamp).toLocaleString()}</p>
       </div>
       <div className="mt-3">
-        <RichText text={message.text} />
+        <RichText text={text} />
       </div>
+      {downloadableFiles.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {downloadableFiles.map((file) => (
+            <a
+              key={file.path}
+              href={`/api/files?path=${encodeURIComponent(file.path)}`}
+              className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-1.5 text-xs text-[#6EE7B7] hover:brightness-110"
+              download
+              target="_blank"
+              rel="noreferrer"
+            >
+              Download {file.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -471,6 +469,35 @@ function splitMarkdownBlocks(text: string): Array<{ kind: "text" | "code"; conte
   const tail = text.slice(lastIndex).trim();
   if (tail) blocks.push({ kind: "text", content: tail });
   return blocks.length ? blocks : [{ kind: "text", content: text }];
+}
+
+function extractDownloadableFiles(text: string): DownloadableFile[] {
+  const results = new Map<string, DownloadableFile>();
+  const mediaMatches = text.match(/^MEDIA:(.+)$/gm) || [];
+
+  for (const match of mediaMatches) {
+    const mediaPath = match.replace(/^MEDIA:/, "").trim();
+    if (!mediaPath.startsWith("/")) continue;
+    results.set(mediaPath, { path: mediaPath, label: fileNameFromPath(mediaPath) });
+  }
+
+  const absolutePathRegex = /(?:^|[\s(\[])(\/root\/(?:\.openclaw\/workspace|projects)\/[^\s)\]]+|\/tmp\/annies-mission-control-uploads\/[^\s)\]]+)/g;
+  let pathMatch: RegExpExecArray | null;
+  while ((pathMatch = absolutePathRegex.exec(text)) !== null) {
+    const filePath = pathMatch[1];
+    results.set(filePath, { path: filePath, label: fileNameFromPath(filePath) });
+  }
+
+  return [...results.values()];
+}
+
+function stripMediaLines(text: string) {
+  return text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function fileNameFromPath(filePath: string) {
+  const parts = filePath.split("/").filter(Boolean);
+  return parts.at(-1) || filePath;
 }
 
 function formatFileSize(size: number) {

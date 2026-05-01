@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { invokeOpenClaw } from "@/lib/openclaw";
+import { listProjects } from "@/lib/projects";
 
 const execFileAsync = promisify(execFile);
 const OPENCLAW_STATE_DIR = "/root/.openclaw";
@@ -55,6 +56,13 @@ type SourceHealth = {
   key: "todo" | "tasks" | "sessions" | "cron";
   label: string;
   status: "ok" | "degraded";
+  detail: string;
+};
+
+type AttentionItem = {
+  id: string;
+  tone: "warning" | "focus" | "info";
+  title: string;
   detail: string;
 };
 
@@ -183,16 +191,33 @@ export type AgendaItem = {
   timestamp: number;
 };
 
+export type ProjectPulseItem = {
+  id: string;
+  name: string;
+  status: "planned" | "active" | "blocked" | "done";
+  progress: number;
+  summary: string;
+  nextStep?: string;
+  updatedAt: number;
+  pinned?: boolean;
+};
+
 export type ControlCenterData = {
   priorities: PriorityItem[];
   activeWork: ActiveWorkItem[];
   agenda: AgendaItem[];
+  projects: ProjectPulseItem[];
+  alerts: AttentionItem[];
   summary: {
     openPriorities: number;
     activeNow: number;
     upcomingJobs: number;
   };
   focus: {
+    headline: string;
+    note: string;
+  };
+  recommendation: {
     headline: string;
     note: string;
   };
@@ -513,13 +538,143 @@ function buildFocusSummary(priorities: PriorityItem[], activeWork: ActiveWorkIte
   };
 }
 
+async function getProjectPulse() {
+  return withCache("project-pulse", 15_000, async () => {
+    try {
+      const projects = await listProjects();
+      return projects
+        .filter((project) => project.pinned || project.status === "active" || project.status === "blocked")
+        .sort((a, b) => {
+          if (Boolean(b.pinned) !== Boolean(a.pinned)) return Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+          if (a.status !== b.status) {
+            const order = { blocked: 0, active: 1, planned: 2, done: 3 } as const;
+            return order[a.status] - order[b.status];
+          }
+          return b.updatedAt - a.updatedAt;
+        })
+        .slice(0, 4)
+        .map((project) => ({
+          id: project.id,
+          name: project.name,
+          status: project.status,
+          progress: project.progress,
+          summary: project.summary,
+          nextStep: project.nextStep,
+          updatedAt: project.updatedAt,
+          pinned: project.pinned,
+        }));
+    } catch {
+      return [] as ProjectPulseItem[];
+    }
+  });
+}
+
+function buildRecommendation(projects: ProjectPulseItem[], priorities: PriorityItem[], agenda: AgendaItem[]) {
+  const blockedProject = projects.find((project) => project.status === "blocked");
+  if (blockedProject) {
+    return {
+      headline: `Annie would unblock ${blockedProject.name} first.`,
+      note: blockedProject.nextStep || blockedProject.summary,
+    };
+  }
+
+  const activeProject = projects.find((project) => project.status === "active");
+  if (activeProject) {
+    return {
+      headline: `Best next move: push ${activeProject.name}.`,
+      note: activeProject.nextStep || activeProject.summary,
+    };
+  }
+
+  if (priorities.length) {
+    return {
+      headline: "Best next move: trim the top backlog item.",
+      note: priorities[0]?.text || "Review the current backlog.",
+    };
+  }
+
+  if (agenda.length) {
+    return {
+      headline: "The board is clear for the next automation beat.",
+      note: `${agenda[0]?.title || "Next job"} at ${formatTimestamp(agenda[0]?.timestamp)}`,
+    };
+  }
+
+  return {
+    headline: "Annie is ready for the next instruction.",
+    note: "No project or scheduling pressure is surfacing right now.",
+  };
+}
+
+function buildAttentionItems(
+  projects: ProjectPulseItem[],
+  priorities: PriorityItem[],
+  activeWork: ActiveWorkItem[],
+  agenda: AgendaItem[],
+  sources: SourceHealth[]
+) {
+  const items: AttentionItem[] = [];
+  const blockedProject = projects.find((project) => project.status === "blocked");
+  const degradedSources = sources.filter((source) => source.status === "degraded");
+  const nextJob = agenda[0];
+  const nextJobDistance = nextJob ? nextJob.timestamp - Date.now() : Number.POSITIVE_INFINITY;
+
+  if (blockedProject) {
+    items.push({
+      id: `blocked-${blockedProject.id}`,
+      tone: "warning",
+      title: `${blockedProject.name} is blocked`,
+      detail: blockedProject.nextStep || blockedProject.summary,
+    });
+  }
+
+  if (degradedSources.length) {
+    items.push({
+      id: "degraded-sources",
+      tone: "warning",
+      title: `Annie is missing ${degradedSources.length} signal${degradedSources.length === 1 ? "" : "s"}`,
+      detail: degradedSources.map((source) => `${source.label}: ${source.detail}`).join(" · "),
+    });
+  }
+
+  if (priorities.length && !activeWork.length) {
+    items.push({
+      id: "no-active-work",
+      tone: "focus",
+      title: "Open priorities are waiting for a push",
+      detail: priorities[0]?.text || "Review the top priority and start the next thread.",
+    });
+  }
+
+  if (Number.isFinite(nextJobDistance) && nextJobDistance > 0 && nextJobDistance <= 60 * 60_000) {
+    items.push({
+      id: `next-job-${nextJob.id}`,
+      tone: "info",
+      title: `${nextJob.title} is coming up soon`,
+      detail: `${formatTimestamp(nextJob.timestamp)} · ${nextJob.detail}`,
+    });
+  }
+
+  if (!items.length) {
+    items.push({
+      id: "board-calm",
+      tone: "info",
+      title: "Everything looks steady",
+      detail: "No immediate blockers or missing signals are surfacing right now.",
+    });
+  }
+
+  return items.slice(0, 4);
+}
+
 export async function getControlCenterData() {
   return withCache("control-center", 10_000, async () => {
-    const [priorities, tasks, sessions, jobs] = await Promise.all([
+    const [priorities, tasks, sessions, jobs, projects] = await Promise.all([
       getPriorityItems(),
       getTasks(),
       getSessions(),
       getCronJobs(),
+      getProjectPulse(),
     ]);
 
     const activeTaskStatuses = new Set(["queued", "pending", "running", "active", "in_progress"]);
@@ -591,12 +746,15 @@ export async function getControlCenterData() {
       priorities: priorities.slice(0, 8),
       activeWork,
       agenda,
+      projects,
+      alerts: buildAttentionItems(projects, priorities, activeWork, agenda, sources),
       summary: {
         openPriorities: priorities.length,
         activeNow: activeWork.length,
         upcomingJobs: agenda.length,
       },
       focus: buildFocusSummary(priorities, activeWork, agenda),
+      recommendation: buildRecommendation(projects, priorities, agenda),
       meta: {
         generatedAt: Date.now(),
         sources,
@@ -667,39 +825,40 @@ async function getResourceSnapshot(): Promise<ResourceSnapshot> {
   };
 }
 
+async function getLatestOpenClawVersion() {
+  return withCache("openclaw-latest-version", 30 * 60_000, async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2_000);
+      const npmResponse = await fetch("https://registry.npmjs.org/openclaw/latest", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!npmResponse.ok) return "unknown";
+      const npmData = (await npmResponse.json()) as { version?: string };
+      return npmData.version || "unknown";
+    } catch {
+      return "unknown";
+    }
+  });
+}
+
 export async function getBannerData() {
-  const [statusText, sessions, jobs, tasks, resourceSnapshot] = await Promise.all([
+  const [statusText, sessions, jobs, tasks, resourceSnapshot, latestVersion] = await Promise.all([
     getStatusText(),
     getSessions(),
     getCronJobs(),
     getTasks(),
     getResourceSnapshot(),
+    getLatestOpenClawVersion(),
   ]);
 
   const versionMatch = statusText.match(/OpenClaw\s+([^\s]+)/i);
   const modelMatch = statusText.match(/Model:\s+([^·\n]+)/i);
   const contextMatch = statusText.match(/Context:\s+([^·\n]+)/i);
   const runtimeMatch = statusText.match(/Runtime:\s+([^·\n]+)/i);
-
-  let latestVersion = "unknown";
-  let upToDate = false;
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3_000);
-    const npmResponse = await fetch("https://registry.npmjs.org/openclaw/latest", {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (npmResponse.ok) {
-      const npmData = (await npmResponse.json()) as { version?: string };
-      latestVersion = npmData.version || latestVersion;
-      upToDate = latestVersion === (versionMatch?.[1] || "");
-    }
-  } catch {
-    // best effort only
-  }
+  const upToDate = latestVersion !== "unknown" && latestVersion === (versionMatch?.[1] || "");
 
   const resources = [
     ["OpenAI", !!process.env.OPENAI_API_KEY],

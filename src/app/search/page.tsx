@@ -43,29 +43,67 @@ export default function SearchPage() {
       }
     };
 
-    load();
+    void load();
     return () => {
       mounted = false;
     };
   }, [debouncedQuery]);
 
-  const visibleResults = debouncedQuery ? results : emptyResults;
-
   const sections = useMemo(
     () => [
-      { title: "Memories", items: visibleResults.memories, render: (item: SearchResults["memories"][number]) => <><p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p><p className="mt-1 text-xs text-white/55">Line {item.line || "—"}</p><p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p></> },
-      { title: "Files", items: visibleResults.files, render: (item: SearchResults["files"][number]) => <><p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p><p className="mt-1 text-xs text-white/55">Line {item.lineNumber}</p><p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p></> },
-      { title: "Conversations", items: visibleResults.conversations, render: (item: SearchResults["conversations"][number]) => <><p className="text-sm font-medium text-white">{highlight(item.label, debouncedQuery)}</p><p className="mt-1 text-xs text-white/55">{item.model} · {item.status}</p><p className="mt-2 text-sm text-white/70">Updated {new Date(item.updatedAt).toLocaleString()}</p></> },
-      { title: "Tasks", items: visibleResults.tasks, render: (item: SearchResults["tasks"][number]) => <><p className="text-sm font-medium text-white">{highlight(item.name, debouncedQuery)}</p><p className="mt-1 text-xs text-white/55">{item.schedule} · {item.enabled ? "enabled" : "disabled"}</p><p className="mt-2 text-sm text-white/70">{highlight(item.description, debouncedQuery)}</p></> },
+      {
+        title: "Memories",
+        items: results.memories,
+        render: (item: SearchResults["memories"][number]) => (
+          <>
+            <p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p>
+            <p className="mt-1 text-xs text-white/50">Line {item.line || "—"}</p>
+            <p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p>
+          </>
+        ),
+      },
+      {
+        title: "Files",
+        items: results.files,
+        render: (item: SearchResults["files"][number]) => (
+          <>
+            <p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p>
+            <p className="mt-1 text-xs text-white/50">Line {item.lineNumber}</p>
+            <p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p>
+          </>
+        ),
+      },
+      {
+        title: "Conversations",
+        items: results.conversations,
+        render: (item: SearchResults["conversations"][number]) => (
+          <>
+            <p className="text-sm font-medium text-white">{highlight(item.label, debouncedQuery)}</p>
+            <p className="mt-1 text-xs text-white/50">{item.model} · {item.status}</p>
+            <p className="mt-2 text-sm text-white/70">Updated {new Date(item.updatedAt).toLocaleString()}</p>
+          </>
+        ),
+      },
+      {
+        title: "Tasks",
+        items: results.tasks,
+        render: (item: SearchResults["tasks"][number]) => (
+          <>
+            <p className="text-sm font-medium text-white">{highlight(item.name, debouncedQuery)}</p>
+            <p className="mt-1 text-xs text-white/50">{item.schedule} · {item.enabled ? "enabled" : "disabled"}</p>
+            <p className="mt-2 text-sm text-white/70">{highlight(item.description, debouncedQuery)}</p>
+          </>
+        ),
+      },
     ],
-    [debouncedQuery, visibleResults]
+    [debouncedQuery, results]
   );
 
   return (
     <PageShell>
-      <section className="animate-fade-in rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-        <p className="text-xs uppercase tracking-[0.24em] text-white/45">Global search</p>
-        <h2 className="mt-1 text-2xl font-semibold text-white">Search everywhere</h2>
+      <section className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+        <p className="text-xs uppercase tracking-[0.24em] text-white/45">Search</p>
+        <h2 className="mt-1 text-2xl font-semibold text-white">Find anything fast</h2>
         <div className="mt-5">
           <input
             value={query}
@@ -78,7 +116,7 @@ export default function SearchPage() {
         {loading ? (
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-36 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />
+              <div key={index} className="h-32 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />
             ))}
           </div>
         ) : (
@@ -86,17 +124,15 @@ export default function SearchPage() {
             {sections.map((section) => (
               <div key={section.title} className="rounded-2xl border border-[#2A2A3E] bg-black/20 p-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">{section.title}</h3>
+                  <h3 className="text-base font-semibold text-white">{section.title}</h3>
                   <span className="text-xs text-white/45">{section.items.length}</span>
                 </div>
                 <div className="mt-4 space-y-3">
-                  {section.items.length ? section.items.map((item: { id: string }) => (
+                  {section.items.length ? section.items.slice(0, 8).map((item: { id: string }) => (
                     <div key={item.id} className="rounded-2xl border border-white/8 bg-[#0E1020] p-3">
-                      <div className="min-w-0 break-words">
-                        {section.render(item as never)}
-                      </div>
+                      <div className="min-w-0 break-words">{section.render(item as never)}</div>
                     </div>
-                  )) : <p className="text-sm text-white/45">{debouncedQuery ? "No results here yet." : "Start typing to search."}</p>}
+                  )) : <p className="text-sm text-white/45">{debouncedQuery ? "No results here." : "Start typing to search."}</p>}
                 </div>
               </div>
             ))}
