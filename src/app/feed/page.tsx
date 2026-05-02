@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 
 type ControlCenterData = {
@@ -82,6 +82,23 @@ export default function FeedPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
 
+  const liveWork = useMemo(
+    () =>
+      controlCenter.activeWork.filter((item) => {
+        const status = item.status.toLowerCase();
+        return ["running", "active", "in progress"].includes(status);
+      }),
+    [controlCenter.activeWork]
+  );
+  const recentWork = useMemo(
+    () =>
+      controlCenter.activeWork.filter((item) => {
+        const status = item.status.toLowerCase();
+        return !["running", "active", "in progress"].includes(status);
+      }),
+    [controlCenter.activeWork]
+  );
+
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRefreshing(true);
 
@@ -102,10 +119,24 @@ export default function FeedPage() {
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
-    const interval = window.setInterval(() => void load("refresh"), 30_000);
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        void load("refresh");
+      }
+    }, 30_000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void load("refresh");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [load]);
 
@@ -161,6 +192,34 @@ export default function FeedPage() {
                   ))}
                 </div>
               ) : null}
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <BriefCard
+                  label="Top priority"
+                  title={controlCenter.priorities[0]?.text || "Backlog is clear"}
+                  detail={controlCenter.priorities[0]?.group || "Nothing urgent is surfacing."}
+                />
+                <BriefCard
+                  label="Live now"
+                  title={liveWork[0]?.title || "No hot thread running"}
+                  detail={
+                    liveWork[0]
+                      ? `${liveWork[0].source} · ${liveWork[0].status}`
+                      : controlCenter.activeWork[0]
+                        ? `Latest signal: ${controlCenter.activeWork[0].title}`
+                        : "Annie is calm and ready for the next push."
+                  }
+                />
+                <BriefCard
+                  label="Next beat"
+                  title={controlCenter.agenda[0]?.title || "No scheduled beat queued"}
+                  detail={
+                    controlCenter.agenda[0]
+                      ? `${formatRelativeFuture(controlCenter.agenda[0].timestamp)} · ${controlCenter.agenda[0].detail}`
+                      : "Nothing time-based is pressing right now."
+                  }
+                />
+              </div>
             </>
           )}
         </section>
@@ -185,18 +244,52 @@ export default function FeedPage() {
               )}
             </Panel>
 
-            <Panel title="Current work">
+            <Panel
+              title="Current work"
+              headerRight={
+                controlCenter.activeWork.length ? (
+                  <span className="text-xs text-white/40">{liveWork.length} live · {recentWork.length} recent</span>
+                ) : undefined
+              }
+            >
               {controlCenter.activeWork.length ? (
-                <div className="space-y-3">
-                  {controlCenter.activeWork.slice(0, 6).map((item) => (
-                    <ItemCard
-                      key={item.id}
-                      eyebrow={`${item.source} · ${formatRelative(item.updatedAt)}`}
-                      title={item.title}
-                      detail={item.detail}
-                      status={item.status}
-                    />
-                  ))}
+                <div className="space-y-4">
+                  {liveWork.length ? (
+                    <div>
+                      <SectionLabel label="Live now" />
+                      <div className="mt-2 space-y-3">
+                        {liveWork.slice(0, 4).map((item) => (
+                          <ItemCard
+                            key={item.id}
+                            eyebrow={`${item.source} · ${formatRelative(item.updatedAt)}`}
+                            title={item.title}
+                            detail={item.detail}
+                            status={item.status}
+                            highlight
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyPanel text="No thread is actively running right this second." />
+                  )}
+
+                  {recentWork.length ? (
+                    <div>
+                      <SectionLabel label="Recent signals" />
+                      <div className="mt-2 space-y-3">
+                        {recentWork.slice(0, 3).map((item) => (
+                          <ItemCard
+                            key={item.id}
+                            eyebrow={`${item.source} · ${formatRelative(item.updatedAt)}`}
+                            title={item.title}
+                            detail={item.detail}
+                            status={item.status}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <EmptyPanel text="Nothing active right now." />
@@ -253,18 +346,55 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  headerRight,
+  children,
+}: {
+  title: string;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-      <h3 className="text-base font-semibold text-white">{title}</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-white">{title}</h3>
+        {headerRight}
+      </div>
       <div className="mt-4">{children}</div>
     </section>
   );
 }
 
-function ItemCard({ eyebrow, title, detail, status }: { eyebrow: string; title: string; detail?: string; status?: string }) {
+function BriefCard({ label, title, detail }: { label: string; title: string; detail: string }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-[#0E1020] p-3">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">{label}</p>
+      <p className="mt-2 text-sm font-medium text-white">{title}</p>
+      <p className="mt-1 text-sm text-white/55">{detail}</p>
+    </div>
+  );
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">{label}</p>;
+}
+
+function ItemCard({
+  eyebrow,
+  title,
+  detail,
+  status,
+  highlight,
+}: {
+  eyebrow: string;
+  title: string;
+  detail?: string;
+  status?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-2xl border p-3 ${highlight ? "border-[#34D399]/20 bg-[linear-gradient(135deg,rgba(52,211,153,0.08),rgba(96,165,250,0.08))]" : "border-white/8 bg-[#0E1020]"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">{eyebrow}</p>
@@ -340,6 +470,17 @@ function formatRelative(timestamp: number) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function formatRelativeFuture(timestamp: number) {
+  if (!timestamp) return "Unknown";
+  const diffMinutes = Math.round((timestamp - Date.now()) / 60_000);
+  if (diffMinutes <= 1) return "due now";
+  if (diffMinutes < 60) return `in ${diffMinutes} min`;
+  const hours = Math.floor(diffMinutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `in ${days}d`;
 }
 
 function statusTone(status: string) {

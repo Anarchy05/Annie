@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-02
+
+- Added a compact "Annie brief" strip to the feed so mobile and quick-glance views now surface the top priority, hottest thread, and next automation beat without needing to scan the whole dashboard.
+- Reworked the feed's current-work panel into clearer live-vs-recent sections with stronger highlighting for actively running threads, making Annie's busy-now state easier to read.
+- Reduced unnecessary dashboard polling by pausing feed auto-refresh while the tab is hidden and triggering a refresh when the page becomes visible again, then rebuilt and restarted the local service.
+
 ## 2026-05-01
 
 - Added a `scripts/restart-dashboard-service.sh` helper plus README guidance so the dashboard can be relaunched under a stable transient unit instead of drifting into a failed-unit/manual-process split on port 3000.

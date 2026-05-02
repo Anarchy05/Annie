@@ -92,9 +92,9 @@ Core goals:
 
 ### P1 - Mission Control UX
 
-- [ ] Improve sub-agent and active-work visibility so “busy with” is more useful.
+- [x] Improve sub-agent and active-work visibility so “busy with” is more useful. Split current work into clearer live/recent sections and highlight active threads on the feed.
 - [ ] Add better cron run visibility and history where available.
-- [ ] Add a compact dashboard summary view for quick mobile use.
+- [x] Add a compact dashboard summary view for quick mobile use. Added an Annie brief strip for top priority, live thread, and next beat on the feed.
 
 ### P2 - Repo / Workflow
 
