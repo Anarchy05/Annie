@@ -13,6 +13,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-02
 
+- Bumped `react` and `react-dom` from 19.2.4 to 19.2.5, then re-verified the dashboard with a clean lint pass, a successful production build, and a live `/api/health` check.
 - Added a compact "Annie brief" strip to the feed so mobile and quick-glance views now surface the top priority, hottest thread, and next automation beat without needing to scan the whole dashboard.
 - Reworked the feed's current-work panel into clearer live-vs-recent sections with stronger highlighting for actively running threads, making Annie's busy-now state easier to read.
 - Reduced unnecessary dashboard polling by pausing feed auto-refresh while the tab is hidden and triggering a refresh when the page becomes visible again, then rebuilt and restarted the local service.
