@@ -48,6 +48,7 @@ That avoids the common failure mode where `next start` is relaunched manually on
 ## Verification
 
 ```bash
+npm test
 npm run lint
 npm run build
 ```

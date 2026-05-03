@@ -13,6 +13,10 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-03
 
+- Split the oversized `src/lib/dashboard.ts` module by extracting pure dashboard derivation/types into `src/lib/dashboard-derived.ts`, making the control-center/feed/automation logic easier to reason about and safer to evolve without touching the OpenClaw/file-system wiring.
+- Added a lightweight Node test suite for the new pure dashboard helpers (`npm test`), covering priority parsing, active-work shaping, agenda ordering, attention/recommendation rules, and automation-watch status sorting.
+- Replaced the repo search shell fallback with a plain `grep` path that works in this environment even when `rg` is unavailable, avoiding a silent degraded search path.
+- Re-verified the refactor with a clean `npm test`, `npm run lint`, and `npm run build` pass.
 - Added a lazy-loaded Automation Watch panel to the feed so Annie now surfaces recent cron-run health, failing/skipped automation signals, and the next scheduled beats without slowing down the main control-center payload.
 - Split automation-run insight into a dedicated `/api/automation-watch` route, then re-verified the dashboard with a clean lint pass and a successful production build before restart.
 - Fixed `scripts/restart-dashboard-service.sh` so it now restarts the existing transient systemd unit cleanly instead of failing on unit-name collisions.

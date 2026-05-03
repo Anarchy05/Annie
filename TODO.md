@@ -99,7 +99,8 @@ Core goals:
 
 - [ ] Add a CHANGELOG or WORKLOG for meaningful Annie-made improvements.
 - [x] Add a lightweight release checklist for dashboard changes.
-- [ ] Consider adding tests for core dashboard data helpers.
+- [x] Added focused tests for core dashboard derivation helpers after splitting the pure control-center/feed/automation logic out of the main server data module.
+- [ ] Add a small integration test layer around dashboard file/OpenClaw boundary fallbacks.
 
 ## Inbox / Ideas
 
