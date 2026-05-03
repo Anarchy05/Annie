@@ -54,6 +54,27 @@ type ControlCenterData = {
   };
 };
 
+type AutomationWatchData = {
+  generatedAt: number;
+  headline: string;
+  note: string;
+  summary: {
+    failing: number;
+    warning: number;
+    upcoming: number;
+  };
+  items: Array<{
+    id: string;
+    title: string;
+    detail: string;
+    nextRunAt?: number;
+    lastRunAt?: number;
+    lastRunStatus: string;
+    lastRunSummary: string;
+    status: "healthy" | "warning" | "failing" | "idle";
+  }>;
+};
+
 const emptyControlCenter: ControlCenterData = {
   priorities: [],
   activeWork: [],
@@ -77,9 +98,11 @@ const emptyControlCenter: ControlCenterData = {
 
 export default function FeedPage() {
   const [controlCenter, setControlCenter] = useState<ControlCenterData>(emptyControlCenter);
+  const [automationWatch, setAutomationWatch] = useState<AutomationWatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [automationError, setAutomationError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
 
   const liveWork = useMemo(
@@ -99,6 +122,18 @@ export default function FeedPage() {
     [controlCenter.activeWork]
   );
 
+  const loadAutomationWatch = useCallback(async () => {
+    try {
+      const response = await fetch("/api/automation-watch", { cache: "no-store" });
+      if (!response.ok) throw new Error("Automation watch is unavailable right now.");
+      const data = (await response.json()) as AutomationWatchData;
+      setAutomationWatch(data);
+      setAutomationError(null);
+    } catch (err) {
+      setAutomationError(err instanceof Error ? err.message : "Automation watch is unavailable right now.");
+    }
+  }, []);
+
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRefreshing(true);
 
@@ -115,7 +150,9 @@ export default function FeedPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+
+    void loadAutomationWatch();
+  }, [loadAutomationWatch]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
@@ -296,21 +333,71 @@ export default function FeedPage() {
               )}
             </Panel>
 
-            <Panel title="Coming up">
-              {controlCenter.agenda.length ? (
-                <div className="space-y-3">
-                  {controlCenter.agenda.slice(0, 6).map((item) => (
-                    <ItemCard
-                      key={item.id}
-                      eyebrow={new Date(item.timestamp).toLocaleString()}
-                      title={item.title}
-                      detail={item.detail}
-                    />
-                  ))}
+            <Panel
+              title="Automation watch"
+              headerRight={
+                automationWatch ? (
+                  <span className="text-xs text-white/40">
+                    {automationWatch.summary.failing} failing · {automationWatch.summary.warning} warning
+                  </span>
+                ) : undefined
+              }
+            >
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-[#60A5FA]/20 bg-[linear-gradient(135deg,rgba(96,165,250,0.12),rgba(167,139,250,0.12))] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/45">Annie&apos;s automation read</p>
+                  <p className="mt-2 text-base font-semibold text-white">{automationWatch?.headline || "Reading the automation runway…"}</p>
+                  <p className="mt-1 text-sm text-white/70">{automationWatch?.note || "Loading recent run health without slowing down the main dashboard."}</p>
                 </div>
-              ) : (
-                <EmptyPanel text="No upcoming scheduled jobs." />
-              )}
+
+                <div>
+                  <SectionLabel label="Next up" />
+                  <div className="mt-2 space-y-3">
+                    {controlCenter.agenda.length ? (
+                      controlCenter.agenda.slice(0, 3).map((item) => (
+                        <ItemCard
+                          key={item.id}
+                          eyebrow={new Date(item.timestamp).toLocaleString()}
+                          title={item.title}
+                          detail={item.detail}
+                        />
+                      ))
+                    ) : (
+                      <EmptyPanel text="No upcoming scheduled jobs." />
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <SectionLabel label="Recent run health" />
+                  <div className="mt-2 space-y-3">
+                    {automationError ? (
+                      <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-sm text-yellow-100">{automationError}</div>
+                    ) : automationWatch ? (
+                      automationWatch.items.length ? (
+                        automationWatch.items.map((item) => (
+                          <ItemCard
+                            key={item.id}
+                            eyebrow={item.lastRunAt ? `Last run ${formatRelative(item.lastRunAt)}` : "No recent run logged"}
+                            title={item.title}
+                            detail={`${item.lastRunStatus} · ${item.lastRunSummary}`}
+                            status={item.status}
+                            highlight={item.status === "failing" || item.status === "warning"}
+                          />
+                        ))
+                      ) : (
+                        <EmptyPanel text="No automation health signals are available yet." />
+                      )
+                    ) : (
+                      <div className="space-y-3">
+                        {Array.from({ length: 2 }).map((_, index) => (
+                          <div key={index} className="h-20 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </Panel>
 
             <Panel title="Project pulse">
@@ -485,10 +572,16 @@ function formatRelativeFuture(timestamp: number) {
 
 function statusTone(status: string) {
   const normalized = status.toLowerCase();
-  if (["running", "active", "in progress"].includes(normalized)) {
+  if (["running", "active", "in progress", "healthy", "success", "completed"].includes(normalized)) {
     return "border-[#34D399]/30 bg-[#34D399]/10 text-[#6EE7B7]";
   }
-  if (["queued", "pending", "recent"].includes(normalized)) {
+  if (["queued", "pending", "recent", "warning", "skipped"].includes(normalized)) {
+    return "border-yellow-400/30 bg-yellow-400/10 text-yellow-100";
+  }
+  if (["failing", "failed", "error", "timeout"].includes(normalized)) {
+    return "border-red-400/30 bg-red-400/10 text-red-200";
+  }
+  if (["idle"].includes(normalized)) {
     return "border-[#60A5FA]/30 bg-[#60A5FA]/10 text-[#93C5FD]";
   }
   return "border-white/10 bg-white/5 text-white/70";

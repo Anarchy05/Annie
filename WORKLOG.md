@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-03
+
+- Added a lazy-loaded Automation Watch panel to the feed so Annie now surfaces recent cron-run health, failing/skipped automation signals, and the next scheduled beats without slowing down the main control-center payload.
+- Split automation-run insight into a dedicated `/api/automation-watch` route, then re-verified the dashboard with a clean lint pass and a successful production build before restart.
+- Fixed `scripts/restart-dashboard-service.sh` so it now restarts the existing transient systemd unit cleanly instead of failing on unit-name collisions.
+
 ## 2026-05-02
 
 - Bumped `react` and `react-dom` from 19.2.4 to 19.2.5, then re-verified the dashboard with a clean lint pass, a successful production build, and a live `/api/health` check.

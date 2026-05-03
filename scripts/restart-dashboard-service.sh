@@ -13,8 +13,10 @@ fi
 
 current_pid="$({ ss -ltnp "( sport = :${PORT} )" 2>/dev/null || true; } | awk -F'pid=' '/next-server/ { split($2, parts, ","); print parts[1]; exit }')"
 
-if systemctl list-units --all --full | grep -Fq "${UNIT_FILE}"; then
-  systemctl stop "${UNIT_FILE}" >/dev/null 2>&1 || true
+if systemctl show "${UNIT_FILE}" >/dev/null 2>&1; then
+  systemctl restart "${UNIT_FILE}"
+  systemctl status "${UNIT_FILE}" --no-pager --lines=20
+  exit 0
 fi
 
 if [[ -n "${current_pid}" ]] && kill -0 "${current_pid}" >/dev/null 2>&1; then

@@ -191,6 +191,29 @@ export type AgendaItem = {
   timestamp: number;
 };
 
+export type AutomationWatchItem = {
+  id: string;
+  title: string;
+  detail: string;
+  nextRunAt?: number;
+  lastRunAt?: number;
+  lastRunStatus: string;
+  lastRunSummary: string;
+  status: "healthy" | "warning" | "failing" | "idle";
+};
+
+export type AutomationWatchData = {
+  generatedAt: number;
+  headline: string;
+  note: string;
+  summary: {
+    failing: number;
+    warning: number;
+    upcoming: number;
+  };
+  items: AutomationWatchItem[];
+};
+
 export type ProjectPulseItem = {
   id: string;
   name: string;
@@ -435,6 +458,18 @@ export async function getCronJobs() {
 export async function getCronRuns(jobId: string) {
   try {
     const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
+    try {
+      const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
+      if (Array.isArray(parsed)) {
+        return { entries: parsed } satisfies CronRunsResponse;
+      }
+      if (Array.isArray(parsed.entries)) {
+        return { entries: parsed.entries } satisfies CronRunsResponse;
+      }
+    } catch {
+      // Fall through to line-based parsing for older/plain-text output.
+    }
+
     const entries = text
       .split("\n")
       .map((line) => line.trim())
@@ -450,6 +485,14 @@ export async function getCronRuns(jobId: string) {
   } catch {
     return { entries: [] } satisfies CronRunsResponse;
   }
+}
+
+function normalizeRunStatus(status?: string) {
+  const normalized = (status || "unknown").toLowerCase();
+  if (["ok", "success", "completed", "done"].includes(normalized)) return "healthy" as const;
+  if (["failed", "error", "timeout", "timed_out"].includes(normalized)) return "failing" as const;
+  if (["skipped", "cancelled", "canceled", "partial"].includes(normalized)) return "warning" as const;
+  return "idle" as const;
 }
 
 async function getTasks() {
@@ -760,6 +803,79 @@ export async function getControlCenterData() {
         sources,
       },
     } satisfies ControlCenterData;
+  });
+}
+
+export async function getAutomationWatchData() {
+  return withCache("automation-watch", 20_000, async () => {
+    const jobs = await getCronJobs();
+    const enabledJobs = jobs.jobs
+      .filter((job) => job.enabled !== false)
+      .sort((a, b) => (a.state?.nextRunAtMs || Number.MAX_SAFE_INTEGER) - (b.state?.nextRunAtMs || Number.MAX_SAFE_INTEGER))
+      .slice(0, 6);
+
+    const runsByJob = await Promise.all(
+      enabledJobs.map(async (job) => ({
+        job,
+        runs: await getCronRuns(job.id),
+      }))
+    );
+
+    const now = Date.now();
+    const items: AutomationWatchItem[] = runsByJob.map(({ job, runs }) => {
+      const latestRun = [...runs.entries]
+        .sort((a, b) => ((b.startedAtMs || b.finishedAtMs || 0) - (a.startedAtMs || a.finishedAtMs || 0)))[0];
+      const nextRunAt = job.state?.nextRunAtMs;
+      const baseStatus = normalizeRunStatus(latestRun?.status);
+      const overdue = typeof nextRunAt === "number" && nextRunAt < now - 15 * 60_000;
+      const status = overdue && baseStatus !== "failing" ? "warning" : baseStatus;
+
+      return {
+        id: job.id,
+        title: job.name || "Untitled job",
+        detail: job.description || job.payload?.message || job.payload?.text || job.schedule?.expr || job.schedule?.kind || "Scheduled job",
+        nextRunAt,
+        lastRunAt: latestRun?.startedAtMs || latestRun?.finishedAtMs,
+        lastRunStatus: latestRun?.status || "No runs yet",
+        lastRunSummary: latestRun?.summary || latestRun?.error || latestRun?.skippedReason || (latestRun ? "No summary recorded" : "Annie hasn't logged a recent run yet."),
+        status,
+      };
+    });
+
+    const failing = items.filter((item) => item.status === "failing").length;
+    const warning = items.filter((item) => item.status === "warning").length;
+    const upcoming = items.filter((item) => typeof item.nextRunAt === "number" && item.nextRunAt > now && item.nextRunAt - now <= 6 * 60 * 60_000).length;
+
+    const headline = failing
+      ? `${failing} automation${failing === 1 ? " needs" : "s need"} Annie's attention`
+      : warning
+        ? "Automation runway has a couple soft edges"
+        : upcoming
+          ? "Automation runway looks steady"
+          : "Automation is calm right now";
+
+    const note = failing
+      ? "The most recent failing runs are surfaced first so Annie can recover the queue quickly."
+      : warning
+        ? "Nothing appears broken, but a skipped or overdue beat is worth a closer look."
+        : upcoming
+          ? "Recent runs look healthy and the next scheduled beats are queued up cleanly."
+          : "No urgent automations are surfacing; Annie has room for deliberate work.";
+
+    return {
+      generatedAt: now,
+      headline,
+      note,
+      summary: { failing, warning, upcoming },
+      items: items
+        .sort((a, b) => {
+          const priority = { failing: 0, warning: 1, healthy: 2, idle: 3 } as const;
+          const statusDelta = priority[a.status] - priority[b.status];
+          if (statusDelta !== 0) return statusDelta;
+          return (a.nextRunAt || Number.MAX_SAFE_INTEGER) - (b.nextRunAt || Number.MAX_SAFE_INTEGER);
+        })
+        .slice(0, 5),
+    } satisfies AutomationWatchData;
   });
 }
 

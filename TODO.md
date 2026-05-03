@@ -75,12 +75,11 @@ Core goals:
 - [ ] Harden all dashboard API routes against missing/partial local OpenClaw state.
 - [x] Let the feed and control-center panels degrade independently when one live API is unavailable.
 - [ ] Add graceful empty states for every panel/page when backing data is unavailable.
-- [ ] Reduce dashboard service restarts and document stable service management.
-
+- [x] Reduce dashboard service restarts and document stable service management. The restart helper now cleanly restarts an existing transient unit instead of colliding with it.
 ### P1 - Performance
 
 - [ ] Add smarter cache invalidation for banner/feed/cron/search data.
-- [ ] Lazy-load heavy dashboard sections and reduce initial payload size.
+- [x] Lazy-load heavy dashboard sections and reduce initial payload size. Split automation health into a separate feed fetch so recent cron-run signals can load without blocking the main dashboard.
 - [ ] Add lightweight timing diagnostics to identify slow internal routes quickly.
 
 ### P1 - Chat Experience
@@ -93,7 +92,7 @@ Core goals:
 ### P1 - Mission Control UX
 
 - [x] Improve sub-agent and active-work visibility so “busy with” is more useful. Split current work into clearer live/recent sections and highlight active threads on the feed.
-- [ ] Add better cron run visibility and history where available.
+- [x] Add better cron run visibility and history where available. Added an Automation Watch panel on the feed with recent cron-run health plus the next scheduled beats.
 - [x] Add a compact dashboard summary view for quick mobile use. Added an Annie brief strip for top priority, live thread, and next beat on the feed.
 
 ### P2 - Repo / Workflow
