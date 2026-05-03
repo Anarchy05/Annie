@@ -32,6 +32,7 @@ const OPENCLAW_STATE_DIR = "/root/.openclaw";
 const OPENCLAW_AGENT_DIR = path.join(OPENCLAW_STATE_DIR, "agents", "main", "sessions");
 const OPENCLAW_SESSIONS_INDEX = path.join(OPENCLAW_AGENT_DIR, "sessions.json");
 const OPENCLAW_CRON_JOBS_FILE = path.join(OPENCLAW_STATE_DIR, "cron", "jobs.json");
+const OPENCLAW_CRON_RUNS_DIR = path.join(OPENCLAW_STATE_DIR, "cron", "runs");
 const TODO_FILE = "/root/projects/mission-control/TODO.md";
 const DEFAULT_CONTEXT_TOKENS = 272000;
 
@@ -305,24 +306,15 @@ export async function getCronJobs() {
 }
 
 export async function getCronRuns(jobId: string) {
-  try {
-    const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
-    try {
-      const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
-      if (Array.isArray(parsed)) {
-        return { entries: parsed } satisfies CronRunsResponse;
-      }
-      if (Array.isArray(parsed.entries)) {
-        return { entries: parsed.entries } satisfies CronRunsResponse;
-      }
-    } catch {
-      // Fall through to line-based parsing for older/plain-text output.
-    }
+  const runsFile = path.join(OPENCLAW_CRON_RUNS_DIR, `${jobId}.jsonl`);
 
+  try {
+    const text = await fs.readFile(runsFile, "utf8");
     const entries = text
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
+      .slice(-20)
       .map((line) => {
         try {
           return JSON.parse(line) as CronRunsResponse["entries"][number];
@@ -330,9 +322,38 @@ export async function getCronRuns(jobId: string) {
           return { summary: line };
         }
       });
-    return { entries };
+
+    return { entries } satisfies CronRunsResponse;
   } catch {
-    return { entries: [] } satisfies CronRunsResponse;
+    try {
+      const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
+      try {
+        const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
+        if (Array.isArray(parsed)) {
+          return { entries: parsed } satisfies CronRunsResponse;
+        }
+        if (Array.isArray(parsed.entries)) {
+          return { entries: parsed.entries } satisfies CronRunsResponse;
+        }
+      } catch {
+        // Fall through to line-based parsing for older/plain-text output.
+      }
+
+      const entries = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line) as CronRunsResponse["entries"][number];
+          } catch {
+            return { summary: line };
+          }
+        });
+      return { entries } satisfies CronRunsResponse;
+    } catch {
+      return { entries: [] } satisfies CronRunsResponse;
+    }
   }
 }
 

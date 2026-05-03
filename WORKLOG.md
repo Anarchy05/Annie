@@ -13,6 +13,8 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-03
 
+- Taught dashboard cron-run loading to read the local OpenClaw `cron/runs/*.jsonl` files first, with the CLI path kept as a fallback, so recent automation history stays available even when the CLI path is slower or less reliable.
+- Re-verified the cron-run loading reliability change with a clean `npm test`, `npm run lint`, and `npm run build` pass during the daily healthcheck.
 - Split the oversized `src/lib/dashboard.ts` module by extracting pure dashboard derivation/types into `src/lib/dashboard-derived.ts`, making the control-center/feed/automation logic easier to reason about and safer to evolve without touching the OpenClaw/file-system wiring.
 - Added a lightweight Node test suite for the new pure dashboard helpers (`npm test`), covering priority parsing, active-work shaping, agenda ordering, attention/recommendation rules, and automation-watch status sorting.
 - Replaced the repo search shell fallback with a plain `grep` path that works in this environment even when `rg` is unavailable, avoiding a silent degraded search path.
