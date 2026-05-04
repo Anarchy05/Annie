@@ -7,6 +7,7 @@ import {
   buildAttentionItems,
   buildAutomationWatchDataModel,
   buildRecommendation,
+  buildTaskTracker,
   parsePriorityItems,
 } from "../src/lib/dashboard-derived.ts";
 
@@ -28,8 +29,8 @@ test("buildActiveWork prioritizes live tasks and recent sessions", () => {
       {
         taskId: "task-1",
         status: "in_progress",
-        title: "Refactor dashboard",
-        summary: "Extract pure helpers",
+        label: "Refactor dashboard",
+        terminalSummary: "Extract pure helpers",
         updatedAtMs: 200,
       },
       {
@@ -59,9 +60,49 @@ test("buildActiveWork prioritizes live tasks and recent sessions", () => {
 
   assert.equal(activeWork.length, 2);
   assert.equal(activeWork[0]?.source, "task");
+  assert.equal(activeWork[0]?.title, "Refactor dashboard");
+  assert.equal(activeWork[0]?.detail, "Extract pure helpers");
   assert.equal(activeWork[0]?.status, "in progress");
   assert.equal(activeWork[1]?.source, "session");
   assert.equal(activeWork[1]?.status, "running");
+});
+
+test("buildTaskTracker summarizes running, queued, and failed tasks", () => {
+  const tracker = buildTaskTracker([
+    {
+      taskId: "live-1",
+      label: "Mission Control daily improvement",
+      status: "running",
+      updatedAtMs: 500,
+    },
+    {
+      taskId: "queued-1",
+      task: "Repo cleanup",
+      status: "queued",
+      updatedAtMs: 450,
+    },
+    {
+      taskId: "failed-1",
+      label: "Network scan",
+      status: "error",
+      terminalSummary: "Timed out while waiting for the CLI.",
+      updatedAtMs: 490,
+    },
+    {
+      taskId: "done-1",
+      label: "Healthcheck",
+      status: "succeeded",
+      updatedAtMs: 400,
+    },
+  ]);
+
+  assert.equal(tracker.summary.running, 1);
+  assert.equal(tracker.summary.queued, 1);
+  assert.equal(tracker.summary.attention, 1);
+  assert.equal(tracker.summary.completed, 1);
+  assert.match(tracker.headline, /live task/i);
+  assert.equal(tracker.items[0]?.title, "Mission Control daily improvement");
+  assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI.");
 });
 
 test("buildAgenda sorts enabled jobs by next run time", () => {

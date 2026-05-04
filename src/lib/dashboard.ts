@@ -13,6 +13,7 @@ import {
   buildAutomationWatchDataModel,
   buildFocusSummary,
   buildRecommendation,
+  buildTaskTracker,
   parsePriorityItems,
   type ControlCenterData,
   type ResourceSnapshot,
@@ -360,7 +361,35 @@ export async function getCronRuns(jobId: string) {
 async function getTasks() {
   return withCache("tasks", 10_000, async () => {
     try {
-      return await runOpenClawJson<TasksListResponse>(["tasks", "list"], 10_000);
+      const response = await runOpenClawJson<TasksListResponse & {
+        tasks?: Array<TasksListResponse["tasks"][number] & {
+          createdAt?: number;
+          startedAt?: number;
+          endedAt?: number;
+          lastEventAt?: number;
+          label?: string;
+          task?: string;
+          terminalSummary?: string;
+          ownerKey?: string;
+          childSessionKey?: string;
+          requesterSessionKey?: string;
+        }>;
+      }>(["tasks", "list"], 10_000);
+
+      const tasks = (response.tasks || []).map((task) => ({
+        ...task,
+        sessionKey: task.sessionKey || task.childSessionKey || task.requesterSessionKey,
+        createdAtMs: task.createdAtMs || task.createdAt,
+        startedAtMs: task.startedAtMs || task.startedAt,
+        updatedAtMs: task.updatedAtMs || task.lastEventAt || task.endedAt || task.startedAt || task.createdAt,
+        title: task.title || task.label || task.task,
+        summary: task.summary || task.terminalSummary || task.childSessionKey || task.ownerKey,
+      }));
+
+      return {
+        count: typeof response.count === "number" ? response.count : tasks.length,
+        tasks,
+      } satisfies TasksListResponse;
     } catch {
       return { count: 0, tasks: [] } satisfies TasksListResponse;
     }
@@ -420,6 +449,7 @@ export async function getControlCenterData() {
     ]);
 
     const activeWork = buildActiveWork(tasks.tasks, sessions.sessions);
+    const taskTracker = buildTaskTracker(tasks.tasks);
     const agenda = buildAgenda(jobs.jobs);
 
     const sources: SourceHealth[] = [
@@ -452,6 +482,7 @@ export async function getControlCenterData() {
     return {
       priorities: priorities.slice(0, 8),
       activeWork,
+      taskTracker,
       agenda,
       projects,
       alerts: buildAttentionItems(projects, priorities, activeWork, agenda, sources),

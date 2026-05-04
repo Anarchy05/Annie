@@ -65,7 +65,7 @@ Core goals:
 ### P0 - Phase 1 Build Targets
 
 - [x] Add an active priorities panel to Mission Control.
-- [ ] Add a real tasks/work tracker layer instead of just raw sessions and cron jobs.
+- [x] Add a real tasks/work tracker layer instead of just raw sessions and cron jobs.
 - [x] Add a clearer “what Annie is busy with now” surface.
 - [x] Add a daily inbox/agenda style summary view.
 - [ ] Add a compact mobile-friendly command center view.

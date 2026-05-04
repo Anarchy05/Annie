@@ -70,13 +70,44 @@ export type TaskEntry = {
   createdAtMs?: number;
   startedAtMs?: number;
   updatedAtMs?: number;
+  createdAt?: number;
+  startedAt?: number;
+  endedAt?: number;
+  lastEventAt?: number;
   summary?: string;
   title?: string;
+  label?: string;
+  task?: string;
+  terminalSummary?: string;
+  ownerKey?: string;
+  childSessionKey?: string;
+  requesterSessionKey?: string;
 };
 
 export type TasksListResponse = {
   count: number;
   tasks: TaskEntry[];
+};
+
+export type TaskTrackerItem = {
+  id: string;
+  title: string;
+  detail: string;
+  status: string;
+  statusTone: "running" | "queued" | "attention" | "done" | "other";
+  updatedAt: number;
+};
+
+export type TaskTrackerData = {
+  headline: string;
+  note: string;
+  summary: {
+    running: number;
+    queued: number;
+    attention: number;
+    completed: number;
+  };
+  items: TaskTrackerItem[];
 };
 
 export type ResourceSnapshot = {
@@ -150,6 +181,7 @@ export type ProjectPulseItem = {
 export type ControlCenterData = {
   priorities: PriorityItem[];
   activeWork: ActiveWorkItem[];
+  taskTracker: TaskTrackerData;
   agenda: AgendaItem[];
   projects: ProjectPulseItem[];
   alerts: AttentionItem[];
@@ -217,6 +249,27 @@ export function normalizeTaskStatus(status?: string) {
   return status.replace(/[_-]+/g, " ");
 }
 
+function getTaskTimestamp(task: TaskEntry) {
+  return task.updatedAtMs || task.startedAtMs || task.createdAtMs || 0;
+}
+
+function getTaskTitle(task: TaskEntry) {
+  return task.title || task.label || task.task || task.runtime || task.taskId || "Task";
+}
+
+function getTaskDetail(task: TaskEntry) {
+  return task.summary || task.terminalSummary || task.childSessionKey || task.sessionKey || task.ownerKey || "OpenClaw task";
+}
+
+function getTaskStatusTone(status?: string): TaskTrackerItem["statusTone"] {
+  const normalized = (status || "").toLowerCase();
+  if (["running", "active", "in_progress"].includes(normalized)) return "running";
+  if (["queued", "pending"].includes(normalized)) return "queued";
+  if (["failed", "error", "timeout", "timed_out", "canceled", "cancelled"].includes(normalized)) return "attention";
+  if (["succeeded", "success", "completed", "done"].includes(normalized)) return "done";
+  return "other";
+}
+
 export function parsePriorityItems(raw: string) {
   const lines = raw.split("\n");
   const items: PriorityItem[] = [];
@@ -258,10 +311,10 @@ export function buildActiveWork(tasks: TaskEntry[], sessions: Session[]) {
       .filter((task) => activeTaskStatuses.has((task.status || "").toLowerCase()))
       .map((task) => ({
         id: `task-${task.taskId || task.runId || task.sessionKey || "task"}`,
-        title: task.title || task.runtime || task.taskId || "Task",
-        detail: task.summary || task.sessionKey || "OpenClaw task",
+        title: getTaskTitle(task),
+        detail: getTaskDetail(task),
         status: normalizeTaskStatus(task.status),
-        updatedAt: task.updatedAtMs || task.startedAtMs || task.createdAtMs || 0,
+        updatedAt: getTaskTimestamp(task),
         source: "task" as const,
       })),
     ...sessions
@@ -278,6 +331,60 @@ export function buildActiveWork(tasks: TaskEntry[], sessions: Session[]) {
   ]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 8);
+}
+
+export function buildTaskTracker(tasks: TaskEntry[]): TaskTrackerData {
+  const running = tasks.filter((task) => getTaskStatusTone(task.status) === "running");
+  const queued = tasks.filter((task) => getTaskStatusTone(task.status) === "queued");
+  const attention = tasks.filter((task) => getTaskStatusTone(task.status) === "attention");
+  const completed = tasks.filter((task) => getTaskStatusTone(task.status) === "done");
+
+  const headline = running.length
+    ? `Annie has ${running.length} live task${running.length === 1 ? "" : "s"} in motion.`
+    : attention.length
+      ? `${attention.length} recent task${attention.length === 1 ? " needs" : "s need"} a closer look.`
+      : queued.length
+        ? `${queued.length} queued task${queued.length === 1 ? " is" : "s are"} lined up next.`
+        : "Task traffic is calm right now.";
+
+  const note = running[0]
+    ? getTaskTitle(running[0])
+    : attention[0]
+      ? getTaskDetail(attention[0])
+      : queued[0]
+        ? getTaskTitle(queued[0])
+        : completed[0]
+          ? `Latest completion: ${getTaskTitle(completed[0])}`
+          : "OpenClaw is not surfacing a live task queue at the moment.";
+
+  const items = [...running, ...attention, ...queued, ...completed]
+    .sort((a, b) => {
+      const priority = { running: 0, attention: 1, queued: 2, done: 3, other: 4 } as const;
+      const delta = priority[getTaskStatusTone(a.status)] - priority[getTaskStatusTone(b.status)];
+      if (delta !== 0) return delta;
+      return getTaskTimestamp(b) - getTaskTimestamp(a);
+    })
+    .slice(0, 6)
+    .map((task) => ({
+      id: `task-tracker-${task.taskId || task.runId || task.sessionKey || getTaskTitle(task)}`,
+      title: getTaskTitle(task),
+      detail: getTaskDetail(task),
+      status: normalizeTaskStatus(task.status),
+      statusTone: getTaskStatusTone(task.status),
+      updatedAt: getTaskTimestamp(task),
+    }));
+
+  return {
+    headline,
+    note,
+    summary: {
+      running: running.length,
+      queued: queued.length,
+      attention: attention.length,
+      completed: completed.length,
+    },
+    items,
+  };
 }
 
 export function buildAgenda(jobs: CronJob[]) {

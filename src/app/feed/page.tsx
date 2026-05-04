@@ -13,6 +13,24 @@ type ControlCenterData = {
     updatedAt: number;
     source: "task" | "session" | "cron";
   }>;
+  taskTracker: {
+    headline: string;
+    note: string;
+    summary: {
+      running: number;
+      queued: number;
+      attention: number;
+      completed: number;
+    };
+    items: Array<{
+      id: string;
+      title: string;
+      detail: string;
+      status: string;
+      statusTone: "running" | "queued" | "attention" | "done" | "other";
+      updatedAt: number;
+    }>;
+  };
   agenda: Array<{ id: string; title: string; detail: string; timestamp: number }>;
   projects: Array<{
     id: string;
@@ -78,6 +96,12 @@ type AutomationWatchData = {
 const emptyControlCenter: ControlCenterData = {
   priorities: [],
   activeWork: [],
+  taskTracker: {
+    headline: "Annie is checking the task runway.",
+    note: "Live task details will appear after local state loads.",
+    summary: { running: 0, queued: 0, attention: 0, completed: 0 },
+    items: [],
+  },
   agenda: [],
   projects: [],
   alerts: [],
@@ -334,6 +358,50 @@ export default function FeedPage() {
             </Panel>
 
             <Panel
+              title="Task runway"
+              headerRight={
+                <span className="text-xs text-white/40">
+                  {controlCenter.taskTracker.summary.running} live · {controlCenter.taskTracker.summary.queued} queued · {controlCenter.taskTracker.summary.attention} attention
+                </span>
+              }
+            >
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-[#60A5FA]/20 bg-[linear-gradient(135deg,rgba(96,165,250,0.12),rgba(167,139,250,0.12))] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/45">Annie&apos;s task read</p>
+                  <p className="mt-2 text-base font-semibold text-white">{controlCenter.taskTracker.headline}</p>
+                  <p className="mt-1 text-sm text-white/70">{controlCenter.taskTracker.note}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <SummaryMiniCard label="Running" value={controlCenter.taskTracker.summary.running} tone="running" />
+                  <SummaryMiniCard label="Queued" value={controlCenter.taskTracker.summary.queued} tone="queued" />
+                  <SummaryMiniCard label="Attention" value={controlCenter.taskTracker.summary.attention} tone="attention" />
+                  <SummaryMiniCard label="Done" value={controlCenter.taskTracker.summary.completed} tone="done" />
+                </div>
+
+                <div>
+                  <SectionLabel label="Recent task flow" />
+                  <div className="mt-2 space-y-3">
+                    {controlCenter.taskTracker.items.length ? (
+                      controlCenter.taskTracker.items.map((item) => (
+                        <ItemCard
+                          key={item.id}
+                          eyebrow={item.updatedAt ? `Updated ${formatRelative(item.updatedAt)}` : "Task state"}
+                          title={item.title}
+                          detail={item.detail}
+                          status={item.status}
+                          highlight={item.statusTone === "running" || item.statusTone === "attention"}
+                        />
+                      ))
+                    ) : (
+                      <EmptyPanel text="No live task queue is surfacing yet." />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel
               title="Automation watch"
               headerRight={
                 automationWatch ? (
@@ -429,6 +497,32 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
     <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.18em] text-white/35">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function SummaryMiniCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "running" | "queued" | "attention" | "done";
+}) {
+  const toneClass =
+    tone === "running"
+      ? "border-[#34D399]/25 bg-[#34D399]/10 text-[#CFFCE9]"
+      : tone === "queued"
+        ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-100"
+        : tone === "attention"
+          ? "border-red-400/30 bg-red-400/10 text-red-100"
+          : "border-[#60A5FA]/25 bg-[#60A5FA]/10 text-[#BFDBFE]";
+
+  return (
+    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+      <p className="text-[11px] uppercase tracking-[0.16em] opacity-80">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
   );
 }

@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-04
+
+- Added a real task-runway layer to the feed so Mission Control now turns raw OpenClaw task history into live/queued/attention/done counts plus a clearer recent task flow panel.
+- Normalized newer OpenClaw task fields (`label`, `task`, `lastEventAt`, `terminalSummary`, child session keys) so active work and focus guidance now show meaningful task names and timestamps instead of generic `cron` placeholders.
+- Re-verified the task-tracker pass with clean `npm test`, `npm run lint`, and `npm run build`, then restarted the local dashboard service and confirmed `/api/health` stayed live.
+
 ## 2026-05-03
 
 - Taught dashboard cron-run loading to read the local OpenClaw `cron/runs/*.jsonl` files first, with the CLI path kept as a fallback, so recent automation history stays available even when the CLI path is slower or less reliable.
