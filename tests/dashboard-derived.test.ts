@@ -10,6 +10,7 @@ import {
   buildTaskTracker,
   parsePriorityItems,
 } from "../src/lib/dashboard-derived.ts";
+import { splitMarkdownBlocks, tokenizeInline } from "../src/lib/chat-markdown.ts";
 
 test("parsePriorityItems only returns unchecked items inside Current Priorities", () => {
   const items = parsePriorityItems(`# TODO\n\n## Current Priorities\n\n### P0 - Direction\n- [ ] Define the next 3 highest-value features\n- [x] Already done\n\n### P1 - Later\n- [ ] Add diagnostics\n\n## Done\n- [ ] Ignore this section\n`);
@@ -194,4 +195,44 @@ test("buildAutomationWatchDataModel marks overdue healthy jobs as warnings and s
   assert.equal(data.summary.warning, 1);
   assert.equal(data.items[0]?.id, "failing");
   assert.equal(data.items[1]?.status, "warning");
+});
+
+test("splitMarkdownBlocks recognizes headings, blockquotes, tables, and fenced code", () => {
+  const blocks = splitMarkdownBlocks([
+    "# Heading",
+    "",
+    "> Helpful quote",
+    "",
+    "| Name | Link |",
+    "| --- | --- |",
+    "| Docs | https://example.com |",
+    "",
+    "```ts",
+    "const answer = 42;",
+    "```",
+  ].join("\n"));
+
+  assert.deepEqual(
+    blocks.map((block) => block.kind),
+    ["heading", "blockquote", "table", "code"]
+  );
+
+  assert.equal(blocks[0]?.kind, "heading");
+  assert.equal(blocks[1]?.kind, "blockquote");
+  assert.equal(blocks[2]?.kind, "table");
+  assert.equal(blocks[3]?.kind, "code");
+});
+
+test("tokenizeInline recognizes inline code, markdown links, and bare urls", () => {
+  const tokens = tokenizeInline("Use `npm test`, read [docs](https://example.com/docs), or open https://example.com/run.");
+
+  assert.deepEqual(tokens, [
+    { type: "text", text: "Use " },
+    { type: "code", text: "npm test" },
+    { type: "text", text: ", read " },
+    { type: "link", text: "docs", href: "https://example.com/docs" },
+    { type: "text", text: ", or open " },
+    { type: "link", text: "https://example.com/run", href: "https://example.com/run" },
+    { type: "text", text: "." },
+  ]);
 });

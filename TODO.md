@@ -85,7 +85,7 @@ Core goals:
 ### P1 - Chat Experience
 
 - [ ] Add drag-and-drop uploads to the chat page.
-- [ ] Improve markdown rendering with better tables, blockquotes, and links.
+- [x] Improve markdown rendering with better tables, blockquotes, and links.
 - [ ] Add a conversation sidebar or archive browser for old web-chat sessions.
 - [ ] Explore streaming-style replies if a safe backend path exists.
 
@@ -116,3 +116,4 @@ Core goals:
 - [x] Added a Phase 1 control center strip on the feed page with active priorities, a busy-now panel, and an upcoming agenda view.
 - [x] Added a homepage project pulse with tracked-project progress, next-step guidance, and source-health badges.
 - [x] Added a dedicated Projects page and API-backed tracker for multi-repo workspace status, progress, and next steps.
+- [x] Improved chat markdown rendering so Annie now displays headings, blockquotes, tables, inline code, and clickable links more cleanly.

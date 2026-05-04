@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { splitMarkdownBlocks, tokenizeInline } from "@/lib/chat-markdown";
 
 type ChatMessage = {
   id: string;
@@ -378,56 +379,89 @@ function RichText({ text }: { text: string }) {
           return <CodeBlock key={`${block.kind}-${index}`} language={block.language} code={block.content} />;
         }
 
-        return (
-          <div key={`${block.kind}-${index}`} className="space-y-3">
-            {block.content.split(/\n{2,}/).map((paragraph, paragraphIndex) => (
-              <TextParagraph key={paragraphIndex} text={paragraph} />
-            ))}
-          </div>
-        );
+        if (block.kind === "heading") {
+          const sizes = {
+            1: "text-xl",
+            2: "text-lg",
+            3: "text-base",
+          } as const;
+          return <h3 key={`${block.kind}-${index}`} className={`font-semibold text-white ${sizes[block.level]}`}>{renderInline(block.text)}</h3>;
+        }
+
+        if (block.kind === "list") {
+          return (
+            <ul key={`${block.kind}-${index}`} className="list-disc space-y-1 pl-5">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderInline(item)}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.kind === "blockquote") {
+          return (
+            <blockquote key={`${block.kind}-${index}`} className="rounded-r-2xl rounded-l-md border-l-4 border-[#60A5FA]/50 bg-[#60A5FA]/10 px-4 py-3 text-white/80">
+              <p className="whitespace-pre-wrap break-words">{renderInline(block.text)}</p>
+            </blockquote>
+          );
+        }
+
+        if (block.kind === "table") {
+          return (
+            <div key={`${block.kind}-${index}`} className="overflow-x-auto rounded-2xl border border-white/8 bg-[#0E1020]">
+              <table className="min-w-full text-left text-sm text-white/80">
+                <thead className="bg-white/5 text-white">
+                  <tr>
+                    {block.headers.map((header, headerIndex) => (
+                      <th key={headerIndex} className="px-3 py-2 font-medium">{renderInline(header)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={rowIndex} className="border-t border-white/8 align-top">
+                      {row.map((cell, cellIndex) => (
+                        <td key={cellIndex} className="px-3 py-2">{renderInline(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        return <p key={`${block.kind}-${index}`} className="whitespace-pre-wrap break-words">{renderInline(block.text)}</p>;
       })}
     </div>
   );
 }
 
-function TextParagraph({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const isList = lines.every((line) => /^\s*([-*]|\d+\.)\s+/.test(line));
-
-  if (isList) {
-    return (
-      <ul className="list-disc space-y-1 pl-5">
-        {lines.map((line, index) => (
-          <li key={index}>{renderInline(line.replace(/^\s*([-*]|\d+\.)\s+/, ""))}</li>
-        ))}
-      </ul>
-    );
-  }
-
-  const heading = text.match(/^(#{1,3})\s+(.+)/);
-  if (heading) {
-    const sizes = {
-      1: "text-xl",
-      2: "text-lg",
-      3: "text-base",
-    } as const;
-    return <h3 className={`font-semibold text-white ${sizes[heading[1].length as 1 | 2 | 3]}`}>{renderInline(heading[2])}</h3>;
-  }
-
-  return <p className="whitespace-pre-wrap break-words">{renderInline(text)}</p>;
-}
-
 function renderInline(text: string) {
-  const segments = text.split(/(`[^`]+`)/g);
-  return segments.map((segment, index) => {
-    if (segment.startsWith("`") && segment.endsWith("`")) {
+  return tokenizeInline(text).map((token, index) => {
+    if (token.type === "code") {
       return (
         <code key={index} className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.95em] text-[#C4B5FD]">
-          {segment.slice(1, -1)}
+          {token.text}
         </code>
       );
     }
-    return <span key={index}>{segment}</span>;
+
+    if (token.type === "link") {
+      return (
+        <a
+          key={index}
+          href={token.href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#93C5FD] underline decoration-[#60A5FA]/40 underline-offset-2 hover:text-white"
+        >
+          {token.text}
+        </a>
+      );
+    }
+
+    return <span key={index}>{token.text}</span>;
   });
 }
 
@@ -451,24 +485,6 @@ function CodeBlock({ language, code }: { language?: string; code: string }) {
       <pre className="overflow-x-auto p-4 text-xs text-white/85"><code>{code}</code></pre>
     </div>
   );
-}
-
-function splitMarkdownBlocks(text: string): Array<{ kind: "text" | "code"; content: string; language?: string }> {
-  const blocks: Array<{ kind: "text" | "code"; content: string; language?: string }> = [];
-  const regex = /```([\w-]+)?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    const before = text.slice(lastIndex, match.index).trim();
-    if (before) blocks.push({ kind: "text", content: before });
-    blocks.push({ kind: "code", language: match[1], content: match[2].trimEnd() });
-    lastIndex = regex.lastIndex;
-  }
-
-  const tail = text.slice(lastIndex).trim();
-  if (tail) blocks.push({ kind: "text", content: tail });
-  return blocks.length ? blocks : [{ kind: "text", content: text }];
 }
 
 function extractDownloadableFiles(text: string): DownloadableFile[] {
