@@ -14,6 +14,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 ## 2026-05-04
 
 - Locked in Phase 1 product decisions with Vorster: prioritize graceful empty/error states, a compact mobile command center, and drag-and-drop chat uploads; defined success metrics around 10-second clarity, degraded-state usability, and low-friction phone use; and fixed the implementation order accordingly in `TODO.md`.
+- Started the first reliability pass by teaching the control-center and automation-watch APIs to degrade into safe fallback payloads instead of throwing 500s, then added clearer empty/error states on the search, calendar, and projects pages.
 - Improved Annie's chat markdown rendering so replies now display headings, blockquotes, tables, inline code, and clickable links in a cleaner, more readable layout.
 - Added focused parser tests for the new chat markdown helpers, then re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
 - Added a real task-runway layer to the feed so Mission Control now turns raw OpenClaw task history into live/queued/attention/done counts plus a clearer recent task flow panel.

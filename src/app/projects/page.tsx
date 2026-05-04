@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
 
 type ProjectStatus = "planned" | "active" | "blocked" | "done";
 
@@ -188,7 +189,12 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                 ))}
-                {!projects.length ? <p className="text-sm text-white/45">No projects yet.</p> : null}
+                {!projects.length ? (
+                  <StatePanel
+                    title="No projects are being tracked yet"
+                    detail="Add the first workspace on the right so Annie can keep progress, status, and next-step guidance in one place."
+                  />
+                ) : null}
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
 
 type CronJob = {
   id: string;
@@ -90,19 +91,33 @@ export default function CalendarPage() {
             ))}
           </div>
         ) : error ? (
-          <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">{error}</div>
+          <div className="mt-6">
+            <StatePanel
+              title="Cron schedule is unavailable"
+              detail={error}
+              tone="danger"
+              action={(
+                <button
+                  onClick={() => window.location.reload()}
+                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                >
+                  Reload calendar
+                </button>
+              )}
+            />
+          </div>
         ) : (
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <ListPanel title="Next to run" subtitle={`${upcomingJobs.length} scheduled`}>
               {upcomingJobs.length ? upcomingJobs.slice(0, 12).map((job) => (
                 <JobCard key={job.id} job={job} expanded={expandedJobId === job.id} runs={runs[job.id] || []} onToggle={handleToggleJob} />
-              )) : <Empty text="No upcoming jobs found." />}
+              )) : <Empty text="No upcoming jobs found. Annie has a clear runway right now." />}
             </ListPanel>
 
             <ListPanel title="Disabled or unscheduled" subtitle={`${laterJobs.length} hidden from the main queue`}>
               {laterJobs.length ? laterJobs.slice(0, 12).map((job) => (
                 <JobCard key={job.id} job={job} expanded={expandedJobId === job.id} runs={runs[job.id] || []} onToggle={handleToggleJob} />
-              )) : <Empty text="Everything has a next run." />}
+              )) : <Empty text="Everything already has a next run. Nothing is parked off to the side." />}
             </ListPanel>
           </div>
         )}

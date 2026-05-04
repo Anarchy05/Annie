@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
 
 type SearchResults = {
   memories: Array<{ id: string; path: string; line?: number; preview: string; score: number }>;
@@ -17,6 +18,7 @@ export default function SearchPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [results, setResults] = useState<SearchResults>(emptyResults);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -35,9 +37,17 @@ export default function SearchPage() {
       setLoading(true);
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Failed to search");
+        if (!response.ok) throw new Error("Search is unavailable right now.");
         const data = (await response.json()) as SearchResults;
-        if (mounted) setResults(data);
+        if (mounted) {
+          setResults(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (mounted) {
+          setResults(emptyResults);
+          setError(err instanceof Error ? err.message : "Search is unavailable right now.");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -99,6 +109,8 @@ export default function SearchPage() {
     [debouncedQuery, results]
   );
 
+  const totalResults = sections.reduce((sum, section) => sum + section.items.length, 0);
+
   return (
     <PageShell>
       <section className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -113,11 +125,41 @@ export default function SearchPage() {
           />
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="mt-6">
+            <StatePanel
+              title="Search is temporarily unavailable"
+              detail={error}
+              tone="warning"
+              action={(
+                <button
+                  onClick={() => window.location.reload()}
+                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                >
+                  Try again
+                </button>
+              )}
+            />
+          </div>
+        ) : loading ? (
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-32 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />
             ))}
+          </div>
+        ) : !debouncedQuery ? (
+          <div className="mt-6">
+            <StatePanel
+              title="Start with a keyword"
+              detail="Search across memories, repo files, sessions, and cron jobs from one place."
+            />
+          </div>
+        ) : !totalResults ? (
+          <div className="mt-6">
+            <StatePanel
+              title="No matches yet"
+              detail={`Nothing matched “${debouncedQuery}”. Try a broader word, a file name, or part of a session label.`}
+            />
           </div>
         ) : (
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -132,7 +174,7 @@ export default function SearchPage() {
                     <div key={item.id} className="rounded-2xl border border-white/8 bg-[#0E1020] p-3">
                       <div className="min-w-0 break-words">{section.render(item as never)}</div>
                     </div>
-                  )) : <p className="text-sm text-white/45">{debouncedQuery ? "No results here." : "Start typing to search."}</p>}
+                  )) : <p className="text-sm text-white/45">No results in this section.</p>}
                 </div>
               </div>
             ))}
