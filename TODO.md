@@ -55,12 +55,12 @@ Core goals:
 ### P0 - Direction
 
 - [x] Turn Annie's mission into a concrete product roadmap for Mission Control and the broader Annie project.
-- [ ] Define the next 3 highest-value features that make Annie more useful to a technophobe.
+- [x] Define the next 3 highest-value features that make Annie more useful to a technophobe. Chosen order: compact mobile command center, graceful empty/error states across the dashboard, and drag-and-drop uploads in chat.
 - [x] Design Annie first as an autonomous money-making builder: internal leverage tools first, sellable products later.
 - [x] Choose the first productizable wedge Annie should pursue and turn it into an execution plan. Chosen direction: build internal tools that make Vorster faster and more profitable first.
 - [x] Identify the first internal profit/leverage tool Annie should build for Vorster. Chosen direction: a control center first, then an automation toolbox, then an opportunity/profit layer.
-- [ ] Define success metrics for Annie's first internal leverage tool.
-- [ ] Break Phase 1 into concrete deliverables and implementation order.
+- [x] Define success metrics for Annie's first internal leverage tool. Success metrics: understand what matters now in under 10 seconds; core dashboard pages stay usable when some OpenClaw data is missing; common phone actions need minimal scrolling/tapping.
+- [x] Break Phase 1 into concrete deliverables and implementation order. Chosen order: reliability/empty states, compact mobile view, chat uploads, then conversation sidebar/archive.
 
 ### P0 - Phase 1 Build Targets
 
@@ -68,13 +68,16 @@ Core goals:
 - [x] Add a real tasks/work tracker layer instead of just raw sessions and cron jobs.
 - [x] Add a clearer “what Annie is busy with now” surface.
 - [x] Add a daily inbox/agenda style summary view.
+- [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
 - [ ] Add a compact mobile-friendly command center view.
+- [ ] Add drag-and-drop uploads to the chat page.
+- [ ] Add a conversation sidebar or archive browser for old web-chat sessions.
 
 ### P0 - Reliability
 
 - [ ] Harden all dashboard API routes against missing/partial local OpenClaw state.
 - [x] Let the feed and control-center panels degrade independently when one live API is unavailable.
-- [ ] Add graceful empty states for every panel/page when backing data is unavailable.
+- [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
 - [x] Reduce dashboard service restarts and document stable service management. The restart helper now cleanly restarts an existing transient unit instead of colliding with it.
 ### P1 - Performance
 
@@ -84,9 +87,7 @@ Core goals:
 
 ### P1 - Chat Experience
 
-- [ ] Add drag-and-drop uploads to the chat page.
 - [x] Improve markdown rendering with better tables, blockquotes, and links.
-- [ ] Add a conversation sidebar or archive browser for old web-chat sessions.
 - [ ] Explore streaming-style replies if a safe backend path exists.
 
 ### P1 - Mission Control UX
