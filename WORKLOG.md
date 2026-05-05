@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-05
+
+- Added drag-and-drop chat uploads so files can now be dropped straight onto Annie's chat surface, with clearer attachment guidance, a live drop target, deduped upload chips, and failed-send recovery that restores queued files instead of losing them.
+- Hardened the Files browser so out-of-root paths, missing nested folders, and file-targeted deep links now fall back to the nearest safe directory instead of erroring; added route tests for those boundary cases and clearer fallback guidance in the UI.
+
 ## 2026-05-04
 
 - Locked in Phase 1 product decisions with Vorster: prioritize graceful empty/error states, a compact mobile command center, and drag-and-drop chat uploads; defined success metrics around 10-second clarity, degraded-state usability, and low-friction phone use; and fixed the implementation order accordingly in `TODO.md`.

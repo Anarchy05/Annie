@@ -70,7 +70,7 @@ Core goals:
 - [x] Add a daily inbox/agenda style summary view.
 - [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
 - [ ] Add a compact mobile-friendly command center view.
-- [ ] Add drag-and-drop uploads to the chat page.
+- [x] Add drag-and-drop uploads to the chat page.
 - [ ] Add a conversation sidebar or archive browser for old web-chat sessions.
 
 ### P0 - Reliability

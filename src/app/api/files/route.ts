@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 
 const ALLOWED_ROOTS = [
   "/root/.openclaw/workspace",
@@ -44,6 +44,15 @@ type FileBrowserEntry = {
   extension: string;
 };
 
+type PathFallbackReason = "outside-root" | "missing" | "file";
+
+type ListPathResolution = {
+  currentPath: string;
+  requestedPath: string | null;
+  pathFallbackApplied: boolean;
+  pathFallbackReason?: PathFallbackReason;
+};
+
 class HttpError extends Error {
   status: number;
 
@@ -81,6 +90,56 @@ function resolveSafePath(rawPath: string, allowedRoots: RootEntry[]) {
   return resolved;
 }
 
+function getOwningRoot(resolvedPath: string, allowedRoots: RootEntry[]) {
+  return allowedRoots.find((root) => resolvedPath === root.path || resolvedPath.startsWith(`${root.path}/`));
+}
+
+async function resolveListPath(rawPath: string | null, roots: RootEntry[]): Promise<ListPathResolution> {
+  const defaultRoot = roots[0];
+  const requestedPath = rawPath || defaultRoot.path;
+
+  try {
+    const resolvedPath = resolveSafePath(requestedPath, roots);
+    const owningRoot = getOwningRoot(resolvedPath, roots) || defaultRoot;
+
+    let candidatePath = resolvedPath;
+    while (candidatePath !== owningRoot.path && !(await pathExists(candidatePath))) {
+      candidatePath = path.dirname(candidatePath);
+    }
+
+    const exists = await pathExists(candidatePath);
+    const safePath = exists ? candidatePath : owningRoot.path;
+    const stats = await fs.stat(safePath);
+
+    if (stats.isDirectory()) {
+      return {
+        currentPath: safePath,
+        requestedPath: rawPath,
+        pathFallbackApplied: safePath !== resolvedPath,
+        pathFallbackReason: safePath !== resolvedPath ? "missing" : undefined,
+      };
+    }
+
+    return {
+      currentPath: path.dirname(safePath),
+      requestedPath: rawPath,
+      pathFallbackApplied: true,
+      pathFallbackReason: "file" as const,
+    };
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.status !== 403) {
+      throw error;
+    }
+
+    return {
+      currentPath: defaultRoot.path,
+      requestedPath: rawPath,
+      pathFallbackApplied: true,
+      pathFallbackReason: "outside-root" as const,
+    };
+  }
+}
+
 async function listDirectory(dirPath: string) {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const enriched = await Promise.all(
@@ -115,27 +174,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (mode === "list") {
-      const requestedPath = rawPath || roots[0].path;
-      const resolvedPath = resolveSafePath(requestedPath, roots);
-      const exists = await pathExists(resolvedPath);
-      const listPath = exists ? resolvedPath : roots[0].path;
-      const stats = await fs.stat(listPath);
-
-      if (!stats.isDirectory()) {
-        throw new HttpError(400, "Not a directory");
-      }
-
-      const items = await listDirectory(listPath);
-      const parentPath = roots.some((root) => root.path === listPath) ? null : path.dirname(listPath);
+      const resolved = await resolveListPath(rawPath, roots);
+      const items = await listDirectory(resolved.currentPath);
+      const parentPath = roots.some((root) => root.path === resolved.currentPath) ? null : path.dirname(resolved.currentPath);
 
       return NextResponse.json(
         {
-          currentPath: listPath,
+          currentPath: resolved.currentPath,
           parentPath,
           roots,
           items,
-          requestedPath: rawPath || null,
-          pathFallbackApplied: listPath !== resolvedPath,
+          requestedPath: resolved.requestedPath || null,
+          pathFallbackApplied: resolved.pathFallbackApplied,
+          pathFallbackReason: resolved.pathFallbackReason,
         },
         { headers: { "Cache-Control": "no-store" } }
       );

@@ -24,6 +24,7 @@ type FileBrowserResponse = {
   items: FileBrowserEntry[];
   requestedPath?: string | null;
   pathFallbackApplied?: boolean;
+  pathFallbackReason?: "outside-root" | "missing" | "file";
 };
 
 export default function FilesPage() {
@@ -95,7 +96,7 @@ export default function FilesPage() {
 
           {data?.pathFallbackApplied && data.requestedPath ? (
             <div className="mt-4 rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-3 text-sm text-[#BFDBFE]">
-              The requested path wasn&apos;t available, so Mission Control opened the nearest safe root instead.
+              {describePathFallback(data.pathFallbackReason)}
             </div>
           ) : null}
 
@@ -167,4 +168,14 @@ function formatFileSize(size: number) {
 function formatDate(timestamp: number) {
   if (!timestamp) return "—";
   return new Date(timestamp).toLocaleString();
+}
+
+function describePathFallback(reason?: FileBrowserResponse["pathFallbackReason"]) {
+  if (reason === "file") {
+    return "That link pointed at a file, so Mission Control opened the file’s parent folder instead.";
+  }
+  if (reason === "outside-root") {
+    return "That path sits outside Mission Control’s allowed file roots, so it was redirected to the nearest safe workspace.";
+  }
+  return "The requested path wasn’t available, so Mission Control opened the nearest safe folder instead.";
 }

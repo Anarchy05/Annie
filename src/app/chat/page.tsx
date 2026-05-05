@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { PageShell } from "@/components/page-shell";
 import { splitMarkdownBlocks, tokenizeInline } from "@/lib/chat-markdown";
 
@@ -29,6 +29,8 @@ const suggestedPrompts = [
   "Help me fix something step by step.",
 ];
 
+const MAX_ATTACHMENTS = 6;
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -39,6 +41,8 @@ export default function ChatPage() {
   const [sendingStartedAt, setSendingStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copyState, setCopyState] = useState<string | null>(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const dragDepthRef = useRef(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -100,6 +104,14 @@ export default function ChatPage() {
     [messages]
   );
 
+  async function appendFiles(files: File[]) {
+    if (!files.length) return;
+    const next = await createPendingAttachments(files.slice(0, MAX_ATTACHMENTS));
+    setAttachments((current) => mergePendingAttachments(current, next));
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   async function streamAssistantMessages(nextMessages: ChatMessage[]) {
     const lastAssistantIndex = [...nextMessages].reverse().findIndex((entry) => entry.role === "assistant");
     if (lastAssistantIndex === -1) {
@@ -131,7 +143,8 @@ export default function ChatPage() {
     const message = input.trim();
     if ((!message && !attachments.length) || sending) return;
 
-    const optimisticText = [message, ...attachments.map((attachment) => `[attachment] ${attachment.file.name}`)]
+    const queuedAttachments = attachments;
+    const optimisticText = [message, ...queuedAttachments.map((attachment) => `[attachment] ${attachment.file.name}`)]
       .filter(Boolean)
       .join("\n");
 
@@ -144,7 +157,7 @@ export default function ChatPage() {
 
     const formData = new FormData();
     formData.set("message", message);
-    attachments.forEach((attachment) => formData.append("files", attachment.file));
+    queuedAttachments.forEach((attachment) => formData.append("files", attachment.file));
 
     setMessages((current) => [...current, optimistic]);
     setInput("");
@@ -166,6 +179,7 @@ export default function ChatPage() {
       setError(err instanceof Error ? err.message : "Unknown error");
       setMessages((current) => current.filter((entry) => entry.id !== optimistic.id));
       setInput(message);
+      setAttachments(queuedAttachments);
     } finally {
       setSending(false);
       setSendingStartedAt(null);
@@ -197,23 +211,36 @@ export default function ChatPage() {
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList?.length) return;
-    const next: PendingAttachment[] = [];
+    await appendFiles(Array.from(fileList));
+  }
 
-    for (const file of Array.from(fileList).slice(0, 6)) {
-      const id = `${file.name}-${file.size}-${Date.now()}-${Math.random()}`;
-      let preview: string | undefined;
-      if (file.type.startsWith("image/")) {
-        preview = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.readAsDataURL(file);
-        });
-      }
-      next.push({ id, file, preview });
+  async function handleDroppedFiles(fileList: FileList | null) {
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    if (!fileList?.length) return;
+    await appendFiles(Array.from(fileList));
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFiles(false);
     }
+  }
 
-    setAttachments((current) => [...current, ...next].slice(0, 6));
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
   }
 
   return (
@@ -237,13 +264,35 @@ export default function ChatPage() {
               ))}
             </div>
 
+            <div
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={(event) => {
+                event.preventDefault();
+                void handleDroppedFiles(event.dataTransfer.files);
+              }}
+              className={`mt-5 rounded-3xl border border-dashed px-4 py-4 transition ${
+                isDraggingFiles
+                  ? "border-[#60A5FA]/70 bg-[#60A5FA]/12"
+                  : "border-white/10 bg-black/20"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">Drop files anywhere in this chat</p>
+                  <p className="mt-1 text-sm text-white/55">Annie can inspect screenshots, text files, logs, and small code snippets. Up to {MAX_ATTACHMENTS} files per send.</p>
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-2 text-sm text-[#6EE7B7] hover:brightness-110"
+                >
+                  Attach files
+                </button>
+              </div>
+            </div>
+
             <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-2 text-sm text-[#6EE7B7] hover:brightness-110"
-              >
-                Attach files
-              </button>
               <button
                 onClick={() => void handleCopyTranscript()}
                 className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/70 hover:text-white"
@@ -261,7 +310,27 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="flex min-h-[75vh] flex-col overflow-hidden rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+        <div
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={(event) => {
+            event.preventDefault();
+            void handleDroppedFiles(event.dataTransfer.files);
+          }}
+          className={`relative flex min-h-[75vh] flex-col overflow-hidden rounded-3xl border bg-[#1A1A2E]/80 shadow-[0_20px_60px_rgba(0,0,0,0.35)] transition ${
+            isDraggingFiles ? "border-[#60A5FA]/70" : "border-[#2A2A3E]"
+          }`}
+        >
+          {isDraggingFiles ? (
+            <div className="pointer-events-none absolute inset-4 z-10 flex items-center justify-center rounded-[1.5rem] border border-dashed border-[#60A5FA]/60 bg-[#0E1020]/88 text-center">
+              <div className="max-w-sm px-6">
+                <p className="text-lg font-semibold text-white">Drop files to hand them to Annie</p>
+                <p className="mt-2 text-sm text-white/65">She&apos;ll pull in image context, text excerpts, and file names right into the next reply.</p>
+              </div>
+            </div>
+          ) : null}
+
           <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto p-5">
             {loading ? (
               Array.from({ length: 4 }).map((_, index) => (
@@ -302,21 +371,23 @@ export default function ChatPage() {
             )}
             {error && <p className="mb-3 rounded-2xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100">{error}</p>}
             <div className="flex flex-col gap-3">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSend();
-                  }
-                }}
-                placeholder="Ask Annie anything..."
-                className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA]"
-              />
+              <div className={`rounded-[1.35rem] border p-1 transition ${isDraggingFiles ? "border-[#60A5FA]/70 bg-[#60A5FA]/8" : "border-transparent"}`}>
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder="Ask Annie anything..."
+                  className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA]"
+                />
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-white/40">Enter to send · Shift+Enter for newline</p>
+                <p className="text-xs text-white/40">Enter to send · Shift+Enter for newline · Drag files in to attach</p>
                 <button
                   onClick={() => void handleSend()}
                   disabled={sending || !canSend}
@@ -331,6 +402,44 @@ export default function ChatPage() {
       </section>
     </PageShell>
   );
+}
+
+async function createPendingAttachments(files: File[]) {
+  const next: PendingAttachment[] = [];
+
+  for (const file of files) {
+    const id = `${file.name}-${file.size}-${file.lastModified}-${Date.now()}-${Math.random()}`;
+    let preview: string | undefined;
+    if (file.type.startsWith("image/")) {
+      preview = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.readAsDataURL(file);
+      });
+    }
+    next.push({ id, file, preview });
+  }
+
+  return next;
+}
+
+function mergePendingAttachments(current: PendingAttachment[], next: PendingAttachment[]) {
+  const merged = [...current];
+  const seen = new Set(current.map((attachment) => attachmentSignature(attachment.file)));
+
+  for (const attachment of next) {
+    const signature = attachmentSignature(attachment.file);
+    if (seen.has(signature)) continue;
+    merged.push(attachment);
+    seen.add(signature);
+    if (merged.length >= MAX_ATTACHMENTS) break;
+  }
+
+  return merged;
+}
+
+function attachmentSignature(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
