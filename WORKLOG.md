@@ -11,8 +11,15 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-07
+
+- Turned search into a real jump surface instead of a dead end: file and memory hits now open directly into Mission Control with line-aware file previews, task hits jump to the schedule, and conversation hits can deep-link straight into archived Annie chats.
+- Added safe in-dashboard text file previews to the Files browser, including line numbers, direct download/copy actions, highlighted deep-linked lines, and API coverage for previewable-vs-binary files so code/log search results are much more useful.
+
 ## 2026-05-05
 
+- Added fallback coverage for degraded dashboard payloads plus safer `/api/banner` and `/api/feed` responses, so the top status strip and feed API stay renderable instead of collapsing into raw 500s when local Mission Control data is unavailable.
+- Added a real chat archive browser so Mission Control now surfaces saved Annie web-chat conversations with previews, message counts, live-vs-archived state, and a clean read-only archive view instead of hiding cleared transcripts in the filesystem.
 - Added drag-and-drop chat uploads so files can now be dropped straight onto Annie's chat surface, with clearer attachment guidance, a live drop target, deduped upload chips, and failed-send recovery that restores queued files instead of losing them.
 - Hardened the Files browser so out-of-root paths, missing nested folders, and file-targeted deep links now fall back to the nearest safe directory instead of erroring; added route tests for those boundary cases and clearer fallback guidance in the UI.
 

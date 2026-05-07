@@ -8,7 +8,8 @@ import { invokeOpenClaw } from "@/lib/openclaw";
 
 const execFileAsync = promisify(execFile);
 const CHAT_SESSION_ID = "annies-mission-control-chat";
-const SESSION_FILE = path.join("/root/.openclaw/agents/main/sessions", `${CHAT_SESSION_ID}.jsonl`);
+const SESSION_DIR = "/root/.openclaw/agents/main/sessions";
+const SESSION_FILE = path.join(SESSION_DIR, `${CHAT_SESSION_ID}.jsonl`);
 const UPLOAD_DIR = "/tmp/annies-mission-control-uploads";
 const TEXT_FILE_EXTENSIONS = new Set([
   ".txt",
@@ -45,13 +46,21 @@ type UploadedAttachment = {
   note: string;
 };
 
+type ChatArchive = {
+  id: string;
+  label: string;
+  archivedAt: number;
+  messageCount: number;
+  preview: string;
+};
+
 async function ensureUploadDir() {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 }
 
-async function readChatHistory(): Promise<ChatMessage[]> {
+async function readChatHistoryFromFile(filePath: string): Promise<ChatMessage[]> {
   try {
-    const raw = await fs.readFile(SESSION_FILE, "utf8");
+    const raw = await fs.readFile(filePath, "utf8");
     const rows = raw
       .split("\n")
       .filter(Boolean)
@@ -85,6 +94,56 @@ async function readChatHistory(): Promise<ChatMessage[]> {
   } catch {
     return [];
   }
+}
+
+async function readChatHistory() {
+  return readChatHistoryFromFile(SESSION_FILE);
+}
+
+function archiveIdFromFileName(fileName: string) {
+  const match = fileName.match(/\.(\d+)\.bak\.jsonl$/);
+  return match?.[1] || null;
+}
+
+async function listChatArchives(): Promise<ChatArchive[]> {
+  try {
+    const entries = await fs.readdir(SESSION_DIR, { withFileTypes: true });
+    const archiveFiles = entries
+      .filter((entry) => entry.isFile() && entry.name.startsWith(`${CHAT_SESSION_ID}.`) && entry.name.endsWith(".bak.jsonl"))
+      .map((entry) => entry.name);
+
+    const archives = await Promise.all(
+      archiveFiles.map(async (fileName) => {
+        const id = archiveIdFromFileName(fileName);
+        if (!id) return null;
+
+        const messages = await readChatHistoryFromFile(path.join(SESSION_DIR, fileName));
+        const archivedAt = Number(id);
+        const previewSource = messages.find((message) => message.role === "user") || messages[0];
+
+        return {
+          id,
+          label: Number.isFinite(archivedAt) ? new Date(archivedAt).toLocaleString() : fileName,
+          archivedAt: Number.isFinite(archivedAt) ? archivedAt : 0,
+          messageCount: messages.length,
+          preview: previewSource?.text.replace(/\s+/g, " ").trim().slice(0, 140) || "Archived Annie conversation",
+        } satisfies ChatArchive;
+      })
+    );
+
+    return archives
+      .filter((archive): archive is ChatArchive => Boolean(archive))
+      .sort((a, b) => b.archivedAt - a.archivedAt)
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+async function readArchiveById(id: string) {
+  if (!/^\d+$/.test(id)) return [];
+  const archivePath = path.join(SESSION_DIR, `${CHAT_SESSION_ID}.${id}.bak.jsonl`);
+  return readChatHistoryFromFile(archivePath);
 }
 
 async function summarizeImage(imagePath: string, name: string) {
@@ -161,9 +220,21 @@ async function archiveChatHistory() {
   await fs.rename(SESSION_FILE, archivePath);
 }
 
-export async function GET() {
-  const messages = await readChatHistory();
-  return NextResponse.json({ messages }, { headers: { "Cache-Control": "no-store" } });
+export async function GET(request: NextRequest) {
+  const archiveId = request.nextUrl.searchParams.get("archive")?.trim() || null;
+  const [messages, archives] = await Promise.all([
+    archiveId ? readArchiveById(archiveId) : readChatHistory(),
+    listChatArchives(),
+  ]);
+
+  return NextResponse.json(
+    {
+      messages,
+      archives,
+      activeArchiveId: archiveId,
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function DELETE() {

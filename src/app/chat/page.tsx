@@ -17,6 +17,14 @@ type PendingAttachment = {
   preview?: string;
 };
 
+type ChatArchive = {
+  id: string;
+  label: string;
+  archivedAt: number;
+  messageCount: number;
+  preview: string;
+};
+
 type DownloadableFile = {
   path: string;
   label: string;
@@ -38,6 +46,8 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [archives, setArchives] = useState<ChatArchive[]>([]);
+  const [activeArchiveId, setActiveArchiveId] = useState<string | null>(null);
   const [sendingStartedAt, setSendingStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copyState, setCopyState] = useState<string | null>(null);
@@ -52,11 +62,19 @@ export default function ChatPage() {
 
     const load = async () => {
       try {
-        const response = await fetch("/api/chat", { cache: "no-store" });
+        const archiveId = new URLSearchParams(window.location.search).get("archive");
+        const params = archiveId ? `?archive=${encodeURIComponent(archiveId)}` : "";
+        const response = await fetch(`/api/chat${params}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Failed to load chat");
-        const data = (await response.json()) as { messages: ChatMessage[] };
+        const data = (await response.json()) as {
+          messages: ChatMessage[];
+          archives?: ChatArchive[];
+          activeArchiveId?: string | null;
+        };
         if (mounted) {
           setMessages(data.messages);
+          setArchives(data.archives || []);
+          setActiveArchiveId(data.activeArchiveId || null);
           setError(null);
         }
       } catch (err) {
@@ -97,7 +115,8 @@ export default function ChatPage() {
     element.style.height = `${Math.min(element.scrollHeight, 240)}px`;
   }, [input]);
 
-  const canSend = input.trim().length > 0 || attachments.length > 0;
+  const viewingArchive = Boolean(activeArchiveId);
+  const canSend = !viewingArchive && (input.trim().length > 0 || attachments.length > 0);
 
   const transcriptMarkdown = useMemo(
     () => messages.map((message) => `## ${message.role === "user" ? "You" : "Annie"}\n\n${message.text}`).join("\n\n"),
@@ -105,7 +124,7 @@ export default function ChatPage() {
   );
 
   async function appendFiles(files: File[]) {
-    if (!files.length) return;
+    if (!files.length || viewingArchive) return;
     const next = await createPendingAttachments(files.slice(0, MAX_ATTACHMENTS));
     setAttachments((current) => mergePendingAttachments(current, next));
     setError(null);
@@ -139,9 +158,29 @@ export default function ChatPage() {
     });
   }
 
+  async function loadConversation(archiveId?: string | null) {
+    const params = archiveId ? `?archive=${encodeURIComponent(archiveId)}` : "";
+    const response = await fetch(`/api/chat${params}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to load chat");
+    const data = (await response.json()) as {
+      messages: ChatMessage[];
+      archives?: ChatArchive[];
+      activeArchiveId?: string | null;
+    };
+    setMessages(data.messages);
+    setArchives(data.archives || []);
+    setActiveArchiveId(data.activeArchiveId || null);
+    const nextUrl = new URL(window.location.href);
+    nextUrl.pathname = "/chat";
+    if (archiveId) nextUrl.searchParams.set("archive", archiveId);
+    else nextUrl.searchParams.delete("archive");
+    window.history.replaceState(null, "", nextUrl.toString());
+    setError(null);
+  }
+
   async function handleSend() {
     const message = input.trim();
-    if ((!message && !attachments.length) || sending) return;
+    if ((!message && !attachments.length) || sending || viewingArchive) return;
 
     const queuedAttachments = attachments;
     const optimisticText = [message, ...queuedAttachments.map((attachment) => `[attachment] ${attachment.file.name}`)]
@@ -172,8 +211,15 @@ export default function ChatPage() {
         method: "POST",
         body: formData,
       });
-      const data = (await response.json()) as { error?: string; messages?: ChatMessage[] };
+      const data = (await response.json()) as {
+        error?: string;
+        messages?: ChatMessage[];
+        archives?: ChatArchive[];
+        activeArchiveId?: string | null;
+      };
       if (!response.ok) throw new Error(data.error || "Failed to send message");
+      setArchives(data.archives || archives);
+      setActiveArchiveId(data.activeArchiveId || null);
       await streamAssistantMessages(data.messages || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -197,7 +243,9 @@ export default function ChatPage() {
       const data = (await response.json()) as { error?: string; messages?: ChatMessage[] };
       if (!response.ok) throw new Error(data.error || "Failed to clear chat");
       setMessages([]);
+      setActiveArchiveId(null);
       setError(null);
+      await loadConversation();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     }
@@ -245,12 +293,12 @@ export default function ChatPage() {
 
   return (
     <PageShell>
-      <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+      <section className="grid gap-4 xl:grid-cols-[0.6fr_1.4fr]">
         <div className="space-y-4">
           <div className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
             <p className="text-xs uppercase tracking-[0.24em] text-white/45">Chat</p>
             <h2 className="mt-1 text-2xl font-semibold text-white">Talk to Annie</h2>
-            <p className="mt-3 text-sm text-white/70">Quick prompts, file uploads, downloadable outputs, and one clean chat window.</p>
+            <p className="mt-3 text-sm text-white/70">Quick prompts, file uploads, downloadable outputs, and now a real archive browser for older Annie conversations.</p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               {suggestedPrompts.map((prompt) => (
@@ -285,7 +333,8 @@ export default function ChatPage() {
                 </div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-2 text-sm text-[#6EE7B7] hover:brightness-110"
+                  disabled={viewingArchive}
+                  className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-2 text-sm text-[#6EE7B7] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Attach files
                 </button>
@@ -300,13 +349,72 @@ export default function ChatPage() {
                 {copyState === "transcript" ? "Copied" : "Copy chat"}
               </button>
               <button
+                onClick={() => void loadConversation(null)}
+                className="rounded-full border border-[#60A5FA]/30 bg-[#60A5FA]/10 px-3 py-2 text-sm text-[#BFDBFE] hover:brightness-110"
+              >
+                Live chat
+              </button>
+              <button
                 onClick={() => void handleClearChat()}
-                className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100 hover:brightness-110"
+                disabled={viewingArchive}
+                className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear chat
               </button>
             </div>
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => void handleFilesSelected(event.target.files)} />
+          </div>
+
+          <div className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-white/45">Archive</p>
+                <h3 className="mt-1 text-lg font-semibold text-white">Recent conversations</h3>
+              </div>
+              <span className="text-xs text-white/40">{archives.length} saved</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <button
+                onClick={() => void loadConversation(null)}
+                className={`w-full rounded-2xl border p-3 text-left transition ${
+                  !viewingArchive
+                    ? "border-[#34D399]/25 bg-[#34D399]/10"
+                    : "border-white/8 bg-[#0E1020] hover:border-white/15"
+                }`}
+              >
+                <p className="text-sm font-medium text-white">Current live chat</p>
+                <p className="mt-1 text-sm text-white/55">Jump back into the active Annie thread.</p>
+              </button>
+
+              {archives.length ? (
+                archives.map((archive) => (
+                  <button
+                    key={archive.id}
+                    onClick={() => void loadConversation(archive.id)}
+                    className={`w-full rounded-2xl border p-3 text-left transition ${
+                      activeArchiveId === archive.id
+                        ? "border-[#60A5FA]/30 bg-[#60A5FA]/10"
+                        : "border-white/8 bg-[#0E1020] hover:border-white/15"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white">{archive.label}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-white/55">{archive.preview}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/55">
+                        {archive.messageCount} msgs
+                      </span>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-[#0E1020] p-4 text-sm text-white/45">
+                  No archived chats yet. When you clear a thread, Annie will save it here.
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -332,6 +440,11 @@ export default function ChatPage() {
           ) : null}
 
           <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto p-5">
+            {viewingArchive ? (
+              <div className="rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-4 text-sm text-[#DBEAFE]">
+                You&apos;re browsing an archived Annie conversation. Return to <button onClick={() => void loadConversation(null)} className="underline decoration-[#93C5FD]/50 underline-offset-2 hover:text-white">live chat</button> to keep talking.
+              </div>
+            ) : null}
             {loading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="h-24 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />
@@ -376,18 +489,21 @@ export default function ChatPage() {
                   ref={textareaRef}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
+                  disabled={viewingArchive}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       void handleSend();
                     }
                   }}
-                  placeholder="Ask Annie anything..."
-                  className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA]"
+                  placeholder={viewingArchive ? "Return to live chat to send a new message..." : "Ask Annie anything..."}
+                  className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA] disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-white/40">Enter to send · Shift+Enter for newline · Drag files in to attach</p>
+                <p className="text-xs text-white/40">
+                  {viewingArchive ? "Archive mode is read-only · switch back to live chat to send" : "Enter to send · Shift+Enter for newline · Drag files in to attach"}
+                </p>
                 <button
                   onClick={() => void handleSend()}
                   disabled={sending || !canSend}

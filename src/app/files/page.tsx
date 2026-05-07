@@ -27,8 +27,22 @@ type FileBrowserResponse = {
   pathFallbackReason?: "outside-root" | "missing" | "file";
 };
 
+type FilePreviewResponse = {
+  path: string;
+  parentPath: string;
+  name: string;
+  extension: string;
+  sizeBytes: number;
+  updatedAt: number;
+  content: string;
+  lineCount: number;
+  truncated: boolean;
+};
+
 export default function FilesPage() {
   const [data, setData] = useState<FileBrowserResponse | null>(null);
+  const [preview, setPreview] = useState<FilePreviewResponse | null>(null);
+  const [previewLine, setPreviewLine] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState("");
@@ -37,21 +51,53 @@ export default function FilesPage() {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       const requestedPath = params.get("path") || "";
-      void loadPath(requestedPath);
+      const requestedView = params.get("view") === "1";
+      const requestedLine = Number(params.get("line") || "");
+      void loadPath(requestedPath, {
+        viewFile: requestedView,
+        line: Number.isFinite(requestedLine) && requestedLine > 0 ? requestedLine : undefined,
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function loadPath(nextPath: string) {
+  async function loadPath(nextPath: string, options?: { viewFile?: boolean; line?: number }) {
     setLoading(true);
     try {
-      const query = nextPath ? `?mode=list&path=${encodeURIComponent(nextPath)}` : "?mode=list";
-      const response = await fetch(`/api/files${query}`, { cache: "no-store" });
+      const nextView = Boolean(options?.viewFile && nextPath);
+      const nextLine = options?.line && options.line > 0 ? options.line : null;
+      let nextPreview: FilePreviewResponse | null = null;
+      let listPath = nextPath;
+
+      if (nextView) {
+        const previewQuery = `?mode=view&path=${encodeURIComponent(nextPath)}`;
+        const previewResponse = await fetch(`/api/files${previewQuery}`, { cache: "no-store" });
+        const previewPayload = (await previewResponse.json()) as FilePreviewResponse & { error?: string };
+        if (!previewResponse.ok) throw new Error(previewPayload.error || "Failed to load file preview");
+        nextPreview = previewPayload;
+        listPath = previewPayload.parentPath;
+      }
+
+      const listQuery = listPath ? `?mode=list&path=${encodeURIComponent(listPath)}` : "?mode=list";
+      const response = await fetch(`/api/files${listQuery}`, { cache: "no-store" });
       const payload = (await response.json()) as FileBrowserResponse & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Failed to load files");
       setData(payload);
+      setPreview(nextPreview);
+      setPreviewLine(nextPreview ? nextLine : null);
       setCurrentPath(payload.currentPath);
-      window.history.replaceState(null, "", `/files?path=${encodeURIComponent(payload.currentPath)}`);
+      const nextUrl = new URL(window.location.href);
+      nextUrl.pathname = "/files";
+      nextUrl.searchParams.set("path", nextPreview?.path || payload.currentPath);
+      if (nextPreview) {
+        nextUrl.searchParams.set("view", "1");
+        if (nextLine) nextUrl.searchParams.set("line", String(nextLine));
+        else nextUrl.searchParams.delete("line");
+      } else {
+        nextUrl.searchParams.delete("view");
+        nextUrl.searchParams.delete("line");
+      }
+      window.history.replaceState(null, "", nextUrl.toString());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -92,7 +138,47 @@ export default function FilesPage() {
                 Up one level
               </button>
             ) : null}
+            {preview ? (
+              <button onClick={() => void loadPath(preview.parentPath)} className="rounded-full border border-[#60A5FA]/30 bg-[#60A5FA]/10 px-3 py-1.5 text-[#BFDBFE]">
+                Back to folder
+              </button>
+            ) : null}
           </div>
+
+          {preview ? (
+            <div className="mt-4 overflow-hidden rounded-3xl border border-[#60A5FA]/20 bg-[#0E1020]">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-white">Previewing {preview.name}</p>
+                  <p className="mt-1 text-xs text-white/45">{formatFileSize(preview.sizeBytes)} · Updated {formatDate(preview.updatedAt)}{preview.truncated ? " · showing the first 64 KB" : ""}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a href={`/api/files?path=${encodeURIComponent(preview.path)}`} download className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-1.5 text-xs text-[#6EE7B7] hover:brightness-110" target="_blank" rel="noreferrer">
+                    Download file
+                  </a>
+                  <button onClick={() => void navigator.clipboard.writeText(preview.content)} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white">
+                    Copy text
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[34rem] overflow-auto">
+                <pre className="min-w-full text-xs leading-6 text-white/85">
+                  {preview.content.split("\n").map((line, index) => {
+                    const lineNumber = index + 1;
+                    const highlighted = previewLine === lineNumber;
+                    return (
+                      <div key={lineNumber} className={`grid grid-cols-[4rem_1fr] gap-0 px-4 ${highlighted ? "bg-[#60A5FA]/14" : "odd:bg-white/[0.015]"}`}>
+                        <a href={`#L${lineNumber}`} id={`L${lineNumber}`} className="select-none pr-4 text-right text-white/30 hover:text-white/55">
+                          {lineNumber}
+                        </a>
+                        <code className="block overflow-x-auto whitespace-pre-wrap break-words border-l border-white/6 pl-4">{line || " "}</code>
+                      </div>
+                    );
+                  })}
+                </pre>
+              </div>
+            </div>
+          ) : null}
 
           {data?.pathFallbackApplied && data.requestedPath ? (
             <div className="mt-4 rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-3 text-sm text-[#BFDBFE]">
@@ -126,9 +212,14 @@ export default function FilesPage() {
                             📁 {item.name}
                           </button>
                         ) : (
-                          <a href={`/api/files?path=${encodeURIComponent(item.path)}`} download className="truncate text-white hover:text-[#93C5FD]" target="_blank" rel="noreferrer">
-                            📄 {item.name}
-                          </a>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button onClick={() => void loadPath(item.path, { viewFile: true })} className="truncate text-left text-white hover:text-[#93C5FD]">
+                              📄 {item.name}
+                            </button>
+                            <a href={`/api/files?path=${encodeURIComponent(item.path)}`} download className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-white/60 hover:text-white" target="_blank" rel="noreferrer">
+                              Download
+                            </a>
+                          </div>
                         )}
                         <p className="mt-1 truncate text-xs text-white/35">{item.path}</p>
                       </div>

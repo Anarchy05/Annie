@@ -71,7 +71,7 @@ Core goals:
 - [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
 - [ ] Add a compact mobile-friendly command center view.
 - [x] Add drag-and-drop uploads to the chat page.
-- [ ] Add a conversation sidebar or archive browser for old web-chat sessions.
+- [x] Add a conversation sidebar or archive browser for old web-chat sessions. Added a chat archive browser that lists saved conversations, shows previews/message counts, and lets Annie's web chat open old transcripts in a read-only view.
 
 ### P0 - Reliability
 
@@ -101,7 +101,7 @@ Core goals:
 - [ ] Add a CHANGELOG or WORKLOG for meaningful Annie-made improvements.
 - [x] Add a lightweight release checklist for dashboard changes.
 - [x] Added focused tests for core dashboard derivation helpers after splitting the pure control-center/feed/automation logic out of the main server data module.
-- [ ] Add a small integration test layer around dashboard file/OpenClaw boundary fallbacks.
+- [x] Add a small integration test layer around dashboard file/OpenClaw boundary fallbacks. Added fallback-shape coverage for the control-center, automation-watch, banner, and feed degraded payloads so dashboard reliability regressions get caught quickly.
 
 ## Inbox / Ideas
 

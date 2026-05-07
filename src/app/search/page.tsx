@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { StatePanel } from "@/components/state-panels";
@@ -69,6 +70,10 @@ export default function SearchPage() {
             <p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p>
             <p className="mt-1 text-xs text-white/50">Line {item.line || "—"}</p>
             <p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ResultLink href={`/files?path=${encodeURIComponent(item.path)}&view=1${item.line ? `&line=${item.line}` : ""}`}>Open preview</ResultLink>
+              <ResultLink href={`/files?path=${encodeURIComponent(item.path)}`}>Browse location</ResultLink>
+            </div>
           </>
         ),
       },
@@ -80,6 +85,10 @@ export default function SearchPage() {
             <p className="text-sm font-medium text-white">{highlight(item.path, debouncedQuery)}</p>
             <p className="mt-1 text-xs text-white/50">Line {item.lineNumber}</p>
             <p className="mt-2 text-sm text-white/70">{highlight(item.preview, debouncedQuery)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ResultLink href={`/files?path=${encodeURIComponent(item.path)}&view=1&line=${item.lineNumber}`}>Open preview</ResultLink>
+              <ResultLink href={`/api/files?path=${encodeURIComponent(item.path)}`}>Download</ResultLink>
+            </div>
           </>
         ),
       },
@@ -91,6 +100,9 @@ export default function SearchPage() {
             <p className="text-sm font-medium text-white">{highlight(item.label, debouncedQuery)}</p>
             <p className="mt-1 text-xs text-white/50">{item.model} · {item.status}</p>
             <p className="mt-2 text-sm text-white/70">Updated {new Date(item.updatedAt).toLocaleString()}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ResultLink href={`/chat?archive=${encodeURIComponent(item.key)}`}>Open chat</ResultLink>
+            </div>
           </>
         ),
       },
@@ -102,6 +114,9 @@ export default function SearchPage() {
             <p className="text-sm font-medium text-white">{highlight(item.name, debouncedQuery)}</p>
             <p className="mt-1 text-xs text-white/50">{item.schedule} · {item.enabled ? "enabled" : "disabled"}</p>
             <p className="mt-2 text-sm text-white/70">{highlight(item.description, debouncedQuery)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ResultLink href="/calendar">Open schedule</ResultLink>
+            </div>
           </>
         ),
       },
@@ -182,6 +197,29 @@ export default function SearchPage() {
         )}
       </section>
     </PageShell>
+  );
+}
+
+function ResultLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const external = href.startsWith("/api/");
+
+  if (external) {
+    return (
+      <a
+        href={href}
+        className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white"
+        target="_blank"
+        rel="noreferrer"
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white">
+      {children}
+    </Link>
   );
 }
 

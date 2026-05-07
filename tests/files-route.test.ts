@@ -53,3 +53,35 @@ test("files list view redirects outside-root requests back to the first safe roo
   assert.equal(payload.pathFallbackApplied, true);
   assert.equal(payload.pathFallbackReason, "outside-root");
 });
+
+test("files view mode returns a text preview for previewable files", async () => {
+  const response = await GET(
+    new NextRequest("http://localhost/api/files?mode=view&path=/root/projects/mission-control/README.md")
+  );
+  const payload = (await response.json()) as {
+    path: string;
+    parentPath: string;
+    name: string;
+    content: string;
+    lineCount: number;
+    truncated: boolean;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.path, "/root/projects/mission-control/README.md");
+  assert.equal(payload.parentPath, "/root/projects/mission-control");
+  assert.equal(payload.name, "README.md");
+  assert.match(payload.content, /Mission Control/i);
+  assert.ok(payload.lineCount > 0);
+  assert.equal(typeof payload.truncated, "boolean");
+});
+
+test("files view mode rejects non-previewable binary files", async () => {
+  const response = await GET(
+    new NextRequest("http://localhost/api/files?mode=view&path=/root/projects/mission-control/src/app/favicon.ico")
+  );
+  const payload = (await response.json()) as { error?: string };
+
+  assert.equal(response.status, 415);
+  assert.match(payload.error || "", /not previewable/i);
+});

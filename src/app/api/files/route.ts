@@ -53,6 +53,18 @@ type ListPathResolution = {
   pathFallbackReason?: PathFallbackReason;
 };
 
+type FilePreviewResponse = {
+  path: string;
+  parentPath: string;
+  name: string;
+  extension: string;
+  sizeBytes: number;
+  updatedAt: number;
+  content: string;
+  lineCount: number;
+  truncated: boolean;
+};
+
 class HttpError extends Error {
   status: number;
 
@@ -163,6 +175,63 @@ async function listDirectory(dirPath: string) {
   });
 }
 
+const PREVIEWABLE_EXTENSIONS = new Set([
+  ".txt",
+  ".md",
+  ".json",
+  ".csv",
+  ".html",
+  ".css",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".log",
+  ".yml",
+  ".yaml",
+  ".sh",
+]);
+const MAX_PREVIEW_BYTES = 64 * 1024;
+
+function isProbablyBinary(buffer: Buffer) {
+  const sample = buffer.subarray(0, Math.min(buffer.length, 1024));
+  for (const byte of sample) {
+    if (byte === 0) return true;
+  }
+  return false;
+}
+
+async function buildFilePreview(filePath: string): Promise<FilePreviewResponse> {
+  const stats = await fs.stat(filePath).catch(() => null);
+  if (!stats) {
+    throw new HttpError(404, "File not found");
+  }
+  if (!stats.isFile()) {
+    throw new HttpError(400, "Not a file");
+  }
+
+  const extension = path.extname(filePath).toLowerCase();
+  const buffer = await fs.readFile(filePath);
+
+  if ((!PREVIEWABLE_EXTENSIONS.has(extension) && !CONTENT_TYPES[extension]?.startsWith("text/")) || isProbablyBinary(buffer)) {
+    throw new HttpError(415, "This file type is not previewable in Mission Control yet");
+  }
+
+  const truncated = buffer.byteLength > MAX_PREVIEW_BYTES;
+  const text = buffer.subarray(0, MAX_PREVIEW_BYTES).toString("utf8");
+
+  return {
+    path: filePath,
+    parentPath: path.dirname(filePath),
+    name: path.basename(filePath),
+    extension,
+    sizeBytes: stats.size,
+    updatedAt: stats.mtimeMs,
+    content: text,
+    lineCount: text.split("\n").length,
+    truncated,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const rawPath = request.nextUrl.searchParams.get("path");
@@ -197,6 +266,12 @@ export async function GET(request: NextRequest) {
     }
 
     const resolvedPath = resolveSafePath(rawPath, roots);
+
+    if (mode === "view") {
+      const preview = await buildFilePreview(resolvedPath);
+      return NextResponse.json(preview, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const stats = await fs.stat(resolvedPath).catch(() => null);
     if (!stats) {
       throw new HttpError(404, "File not found");
