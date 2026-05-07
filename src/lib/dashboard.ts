@@ -25,6 +25,7 @@ import {
   type PriorityItem,
   type ProjectPulseItem,
 } from "@/lib/dashboard-derived";
+import { buildCronJobsPayload, buildCronRunsPayload, buildDegradedCronState, buildOkCronState, type CronStateMeta } from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { listProjects } from "@/lib/projects";
 
@@ -95,6 +96,7 @@ type CronListResponse = {
     wakeMode?: string;
   }>;
   total?: number;
+  meta: CronStateMeta;
 };
 
 type CronRunsResponse = {
@@ -106,6 +108,7 @@ type CronRunsResponse = {
     error?: string;
     skippedReason?: string;
   }>;
+  meta: CronStateMeta;
 };
 
 type MemorySearchHit = {
@@ -299,9 +302,13 @@ export async function getCronJobs() {
   return withCache("cron-jobs", 10_000, async () => {
     try {
       const data = await readJsonFile<{ version?: number; jobs?: CronListResponse["jobs"] }>(OPENCLAW_CRON_JOBS_FILE);
-      return { jobs: data.jobs || [], total: data.jobs?.length || 0 } satisfies CronListResponse;
-    } catch {
-      return { jobs: [] } satisfies CronListResponse;
+      return buildCronJobsPayload(
+        data.jobs || [],
+        buildOkCronState("local", data.jobs?.length ? "Loaded local cron job state." : "No cron jobs are scheduled right now.")
+      ) satisfies CronListResponse;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Cron job state is unavailable right now.";
+      return buildCronJobsPayload([], buildDegradedCronState(message)) satisfies CronListResponse;
     }
   });
 }
@@ -324,17 +331,26 @@ export async function getCronRuns(jobId: string) {
         }
       });
 
-    return { entries } satisfies CronRunsResponse;
+    return buildCronRunsPayload(
+      entries,
+      buildOkCronState("local", entries.length ? "Loaded recent runs from local cron history." : "No runs have been recorded for this job yet.")
+    ) satisfies CronRunsResponse;
   } catch {
     try {
       const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
       try {
         const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
         if (Array.isArray(parsed)) {
-          return { entries: parsed } satisfies CronRunsResponse;
+          return buildCronRunsPayload(
+            parsed,
+            buildOkCronState("cli", parsed.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+          ) satisfies CronRunsResponse;
         }
         if (Array.isArray(parsed.entries)) {
-          return { entries: parsed.entries } satisfies CronRunsResponse;
+          return buildCronRunsPayload(
+            parsed.entries,
+            buildOkCronState("cli", parsed.entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+          ) satisfies CronRunsResponse;
         }
       } catch {
         // Fall through to line-based parsing for older/plain-text output.
@@ -351,9 +367,13 @@ export async function getCronRuns(jobId: string) {
             return { summary: line };
           }
         });
-      return { entries } satisfies CronRunsResponse;
-    } catch {
-      return { entries: [] } satisfies CronRunsResponse;
+      return buildCronRunsPayload(
+        entries,
+        buildOkCronState("cli", entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+      ) satisfies CronRunsResponse;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Run history is unavailable right now.";
+      return buildCronRunsPayload([], buildDegradedCronState(message)) satisfies CronRunsResponse;
     }
   }
 }
