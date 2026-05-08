@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-08
+
+- Fixed a real dashboard usefulness gap in cron scheduling: Mission Control now derives upcoming run times directly from stored cron/every schedules when OpenClaw job state omits `nextRunAtMs`, so the feed and Schedule page stop showing empty "no upcoming jobs" states even though jobs exist.
+- Added focused schedule-derivation coverage for recurring, stepped, staggered, and weekly cron cases, then re-verified the change with clean `npm test`, `npm run lint`, and `npm run build` checks before restarting the dashboard service.
+
 ## 2026-05-07
 
 - Turned search into a real jump surface instead of a dead end: file and memory hits now open directly into Mission Control with line-aware file previews, task hits jump to the schedule, and conversation hits can deep-link straight into archived Annie chats.

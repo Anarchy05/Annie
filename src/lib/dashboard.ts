@@ -25,7 +25,14 @@ import {
   type PriorityItem,
   type ProjectPulseItem,
 } from "@/lib/dashboard-derived";
-import { buildCronJobsPayload, buildCronRunsPayload, buildDegradedCronState, buildOkCronState, type CronStateMeta } from "@/lib/cron-state";
+import {
+  buildCronJobsPayload,
+  buildCronRunsPayload,
+  buildDegradedCronState,
+  buildOkCronState,
+  deriveNextRunAtMs,
+  type CronStateMeta,
+} from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { listProjects } from "@/lib/projects";
 
@@ -82,6 +89,7 @@ type CronListResponse = {
       everyMs?: number;
       at?: string;
       anchorMs?: number;
+      staggerMs?: number;
     };
     payload?: {
       kind?: string;
@@ -302,9 +310,23 @@ export async function getCronJobs() {
   return withCache("cron-jobs", 10_000, async () => {
     try {
       const data = await readJsonFile<{ version?: number; jobs?: CronListResponse["jobs"] }>(OPENCLAW_CRON_JOBS_FILE);
+      const jobs = (data.jobs || []).map((job) => {
+        if (typeof job.state?.nextRunAtMs === "number") return job;
+        const nextRunAtMs = deriveNextRunAtMs(job.schedule);
+        return nextRunAtMs ? { ...job, state: { ...job.state, nextRunAtMs } } : job;
+      });
+      const derivedCount = jobs.filter((job) => typeof job.state?.nextRunAtMs === "number").length - (data.jobs || []).filter((job) => typeof job.state?.nextRunAtMs === "number").length;
+
       return buildCronJobsPayload(
-        data.jobs || [],
-        buildOkCronState("local", data.jobs?.length ? "Loaded local cron job state." : "No cron jobs are scheduled right now.")
+        jobs,
+        buildOkCronState(
+          "local",
+          !jobs.length
+            ? "No cron jobs are scheduled right now."
+            : derivedCount > 0
+              ? `Loaded local cron job state and derived ${derivedCount} upcoming run${derivedCount === 1 ? "" : "s"} from schedule metadata.`
+              : "Loaded local cron job state."
+        )
       ) satisfies CronListResponse;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Cron job state is unavailable right now.";

@@ -47,6 +47,7 @@ export type CronJob = {
     everyMs?: number;
     at?: string;
     anchorMs?: number;
+    staggerMs?: number;
   };
   payload?: {
     kind?: string;
