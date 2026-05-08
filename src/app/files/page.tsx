@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
+import { buildPreviewFallbackMessage, getParentPath } from "@/lib/files-client";
 
 type RootEntry = {
   name: string;
@@ -45,6 +47,8 @@ export default function FilesPage() {
   const [previewLine, setPreviewLine] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [currentPath, setCurrentPath] = useState("");
 
   useEffect(() => {
@@ -63,19 +67,25 @@ export default function FilesPage() {
 
   async function loadPath(nextPath: string, options?: { viewFile?: boolean; line?: number }) {
     setLoading(true);
+    setCopyState("idle");
     try {
       const nextView = Boolean(options?.viewFile && nextPath);
       const nextLine = options?.line && options.line > 0 ? options.line : null;
       let nextPreview: FilePreviewResponse | null = null;
+      let nextPreviewError: string | null = null;
       let listPath = nextPath;
 
       if (nextView) {
         const previewQuery = `?mode=view&path=${encodeURIComponent(nextPath)}`;
         const previewResponse = await fetch(`/api/files${previewQuery}`, { cache: "no-store" });
         const previewPayload = (await previewResponse.json()) as FilePreviewResponse & { error?: string };
-        if (!previewResponse.ok) throw new Error(previewPayload.error || "Failed to load file preview");
-        nextPreview = previewPayload;
-        listPath = previewPayload.parentPath;
+        if (previewResponse.ok) {
+          nextPreview = previewPayload;
+          listPath = previewPayload.parentPath;
+        } else {
+          listPath = getParentPath(nextPath);
+          nextPreviewError = buildPreviewFallbackMessage(nextPath, previewPayload.error || "Failed to load file preview.");
+        }
       }
 
       const listQuery = listPath ? `?mode=list&path=${encodeURIComponent(listPath)}` : "?mode=list";
@@ -85,6 +95,7 @@ export default function FilesPage() {
       setData(payload);
       setPreview(nextPreview);
       setPreviewLine(nextPreview ? nextLine : null);
+      setPreviewError(nextPreviewError);
       setCurrentPath(payload.currentPath);
       const nextUrl = new URL(window.location.href);
       nextUrl.pathname = "/files";
@@ -100,6 +111,9 @@ export default function FilesPage() {
       window.history.replaceState(null, "", nextUrl.toString());
       setError(null);
     } catch (err) {
+      setPreview(null);
+      setPreviewLine(null);
+      setPreviewError(null);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
@@ -156,8 +170,15 @@ export default function FilesPage() {
                   <a href={`/api/files?path=${encodeURIComponent(preview.path)}`} download className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-1.5 text-xs text-[#6EE7B7] hover:brightness-110" target="_blank" rel="noreferrer">
                     Download file
                   </a>
-                  <button onClick={() => void navigator.clipboard.writeText(preview.content)} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white">
-                    Copy text
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(preview.content);
+                      setCopyState("copied");
+                      window.setTimeout(() => setCopyState("idle"), 1200);
+                    }}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white"
+                  >
+                    {copyState === "copied" ? "Copied" : "Copy text"}
                   </button>
                 </div>
               </div>
@@ -180,20 +201,48 @@ export default function FilesPage() {
             </div>
           ) : null}
 
+          {previewError ? (
+            <div className="mt-4">
+              <StatePanel title="File preview wasn’t available" detail={previewError} tone="warning" />
+            </div>
+          ) : null}
+
           {data?.pathFallbackApplied && data.requestedPath ? (
             <div className="mt-4 rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-3 text-sm text-[#BFDBFE]">
               {describePathFallback(data.pathFallbackReason)}
             </div>
           ) : null}
 
-          {error ? <div className="mt-4 rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-sm text-yellow-100">{error}</div> : null}
+          {error ? (
+            <div className="mt-4">
+              <StatePanel
+                title="Files are temporarily unavailable"
+                detail={error}
+                tone="warning"
+                action={(
+                  <button
+                    onClick={() => void loadPath(preview?.path || currentPath)}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                  >
+                    Try again
+                  </button>
+                )}
+              />
+            </div>
+          ) : null}
 
           {loading ? (
             <div className="mt-4 space-y-3">
               {Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-16 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />)}
             </div>
           ) : !data ? (
-            <div className="mt-4 rounded-3xl border border-white/8 bg-[#0E1020] px-4 py-6 text-sm text-white/45">No file roots are available yet.</div>
+            <div className="mt-4">
+              <StatePanel
+                title="No file roots are available yet"
+                detail="Mission Control couldn’t find any safe folders to browse right now."
+                tone="warning"
+              />
+            </div>
           ) : (
             <div className="mt-4 overflow-hidden rounded-3xl border border-white/8 bg-[#0E1020]">
               <div className="hidden grid-cols-[1.4fr_0.7fr_0.9fr_1fr] gap-3 border-b border-white/8 px-4 py-3 text-xs uppercase tracking-[0.16em] text-white/35 md:grid">
@@ -229,7 +278,12 @@ export default function FilesPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="px-4 py-6 text-sm text-white/45">This folder is empty.</div>
+                  <div className="px-4 py-6">
+                    <StatePanel
+                      title="This folder is empty"
+                      detail="There’s nothing in this directory yet. Try another root or move up one level."
+                    />
+                  </div>
                 )}
               </div>
             </div>
