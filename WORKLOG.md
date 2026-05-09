@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-09
+
+- Added lightweight internal route timing diagnostics for Mission Control’s key APIs (`banner`, `control-center`, `automation-watch`, `search`, `feed`, `health`, and `projects`), exposed them at `/api/diagnostics`, and surfaced Annie’s live speed read directly in the top banner so slow paths are visible without leaving the dashboard.
+- Used the new diagnostics to catch a real latency issue in search, then capped the memory-search tool path with a short timeout so file/session/task hits still return promptly instead of the whole search view stalling for ~14 seconds.
+- Re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service.
+
 ## 2026-05-08
 
 - Fixed a real dashboard usefulness gap in cron scheduling: Mission Control now derives upcoming run times directly from stored cron/every schedules when OpenClaw job state omits `nextRunAtMs`, so the feed and Schedule page stop showing empty "no upcoming jobs" states even though jobs exist.

@@ -83,7 +83,7 @@ Core goals:
 
 - [ ] Add smarter cache invalidation for banner/feed/cron/search data.
 - [x] Lazy-load heavy dashboard sections and reduce initial payload size. Split automation health into a separate feed fetch so recent cron-run signals can load without blocking the main dashboard.
-- [ ] Add lightweight timing diagnostics to identify slow internal routes quickly.
+- [x] Add lightweight timing diagnostics to identify slow internal routes quickly. Added route timing capture plus a banner speed read and `/api/diagnostics`, then used it to cap the slow memory-search path so search stays responsive.
 
 ### P1 - Chat Experience
 

@@ -39,6 +39,8 @@ test("banner fallback keeps the top status banner renderable", () => {
   assert.equal(typeof payload.stats.model, "string");
   assert.equal(typeof payload.stats.activeSessions, "number");
   assert.equal(typeof payload.stats.scheduledJobs, "number");
+  assert.equal(payload.diagnostics.summary, "warming up");
+  assert.ok(Array.isArray(payload.diagnostics.routes));
   assert.equal(payload.rawStatus, "Banner is degraded");
 });
 

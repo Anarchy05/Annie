@@ -72,8 +72,17 @@ export function unwrapGatewayResult<T>(envelope: GatewayEnvelope): T {
   return maybeParseJson<T>(text) as T;
 }
 
-export async function invokeOpenClaw<T>(tool: string, args: Record<string, unknown> = {}) {
+export async function invokeOpenClaw<T>(
+  tool: string,
+  args: Record<string, unknown> = {},
+  options: { timeoutMs?: number } = {}
+) {
   const { gatewayUrl, gatewayToken } = getGatewayConfig();
+  const controller = new AbortController();
+  const timeout = options.timeoutMs
+    ? setTimeout(() => controller.abort(new OpenClawGatewayError(`${tool} timed out after ${options.timeoutMs} ms`)), options.timeoutMs)
+    : null;
+
   const response = await fetch(`${gatewayUrl}/tools/invoke`, {
     method: "POST",
     headers: {
@@ -81,7 +90,10 @@ export async function invokeOpenClaw<T>(tool: string, args: Record<string, unkno
       Authorization: `Bearer ${gatewayToken}`,
     },
     cache: "no-store",
+    signal: controller.signal,
     body: JSON.stringify({ tool, args }),
+  }).finally(() => {
+    if (timeout) clearTimeout(timeout);
   });
 
   if (!response.ok) {

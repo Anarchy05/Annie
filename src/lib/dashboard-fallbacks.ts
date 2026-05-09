@@ -90,6 +90,10 @@ export function buildFallbackBannerData(message = "Mission Control banner data i
       diskUsedBytes: 0,
       diskTotalBytes: 0,
     },
+    diagnostics: {
+      summary: "warming up",
+      routes: [],
+    },
     rawStatus: message,
   };
 }

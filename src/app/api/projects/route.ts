@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject, listProjects, type ProjectStatus, updateProject } from "@/lib/projects";
+import { recordRouteSample } from "@/lib/route-diagnostics";
 
 function isValidStatus(value: unknown): value is ProjectStatus {
   return value === "planned" || value === "active" || value === "blocked" || value === "done";
 }
 
 export async function GET() {
+  const startedAt = Date.now();
+
   try {
     const projects = await listProjects();
+    recordRouteSample("projects", Date.now() - startedAt, "ok");
     return NextResponse.json({ projects }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    recordRouteSample("projects", Date.now() - startedAt, "error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

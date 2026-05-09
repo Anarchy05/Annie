@@ -11,6 +11,16 @@ type BannerData = {
     activeSessions: number;
     scheduledJobs: number;
   };
+  diagnostics?: {
+    summary: string;
+    routes: Array<{
+      key: string;
+      label: string;
+      lastDurationMs: number;
+      avgDurationMs: number;
+      tone: "warming" | "swift" | "steady" | "watch";
+    }>;
+  };
 };
 
 function Chip({ label, value }: { label: string; value: string }) {
@@ -54,11 +64,19 @@ export function AgentBanner() {
     return data.upToDate ? `v${data.version}` : `v${data.version} · update ${data.latestVersion}`;
   }, [data]);
 
+  const speedValue = useMemo(() => {
+    if (!data?.diagnostics) return "warming up";
+    const routes = data.diagnostics.routes.slice(0, 2);
+    if (!routes.length) return data.diagnostics.summary;
+    return `${data.diagnostics.summary} · ${routes.map((route) => `${route.label.toLowerCase()} ${route.lastDurationMs}ms`).join(" · ")}`;
+  }, [data]);
+
   return (
     <section className="border-b border-white/8 bg-[#111520]">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-2 px-4 py-3 sm:px-6 lg:px-8">
         <Chip label="Status" value={error ? "degraded" : "ready"} />
         <Chip label="Version" value={versionLabel} />
+        <Chip label="Speed" value={speedValue} />
         <Chip label="Model" value={data?.stats.model || "Loading"} />
         <Chip label="Sessions" value={String(data?.stats.activeSessions ?? "—")} />
         <Chip label="Jobs" value={String(data?.stats.scheduledJobs ?? "—")} />

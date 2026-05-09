@@ -35,6 +35,7 @@ import {
 } from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { listProjects } from "@/lib/projects";
+import { classifyRouteSpeed, getRouteDiagnostics } from "@/lib/route-diagnostics";
 
 const execFileAsync = promisify(execFile);
 const OPENCLAW_STATE_DIR = "/root/.openclaw";
@@ -711,6 +712,19 @@ export async function getBannerData() {
     })),
   ];
 
+  const diagnosticsByRoute = new Map(getRouteDiagnostics().routes.map((route) => [route.route, route]));
+  const speedRoutes = ["control-center", "automation-watch", "search"]
+    .map((route) => diagnosticsByRoute.get(route))
+    .filter((route): route is NonNullable<typeof route> => Boolean(route))
+    .map((route) => ({
+      key: route.route,
+      label: route.label,
+      lastDurationMs: route.lastDurationMs,
+      avgDurationMs: route.avgDurationMs,
+      tone: classifyRouteSpeed(route.lastDurationMs),
+    }));
+  const slowestSpeedRoute = [...speedRoutes].sort((a, b) => b.lastDurationMs - a.lastDurationMs)[0];
+
   return {
     agentName: "Annie's Mission Control",
     version: versionMatch?.[1] || "unknown",
@@ -733,6 +747,16 @@ export async function getBannerData() {
     capabilities,
     subAgents,
     resourceSnapshot,
+    diagnostics: {
+      summary: !speedRoutes.length
+        ? "warming up"
+        : slowestSpeedRoute?.tone === "watch"
+          ? `watching ${slowestSpeedRoute.label.toLowerCase()}`
+          : slowestSpeedRoute?.tone === "steady"
+            ? "steady"
+            : "swift",
+      routes: speedRoutes,
+    },
     rawStatus: statusText,
   };
 }
@@ -748,10 +772,14 @@ export async function buildSearchResults(query: string) {
   }
 
   const [memoryResults, sessions, cronResults, grepText] = await Promise.all([
-    invokeOpenClaw<MemorySearchResponse>("memory_search", {
-      query,
-      maxResults: 8,
-    }).catch(() => ({ hits: [], results: [] } satisfies MemorySearchResponse)),
+    invokeOpenClaw<MemorySearchResponse>(
+      "memory_search",
+      {
+        query,
+        maxResults: 8,
+      },
+      { timeoutMs: 1_200 }
+    ).catch(() => ({ hits: [], results: [] } satisfies MemorySearchResponse)),
     getSessions(),
     getCronJobs(),
     execFileAsync(
