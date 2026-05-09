@@ -16,6 +16,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 - Added lightweight internal route timing diagnostics for Mission Control’s key APIs (`banner`, `control-center`, `automation-watch`, `search`, `feed`, `health`, and `projects`), exposed them at `/api/diagnostics`, and surfaced Annie’s live speed read directly in the top banner so slow paths are visible without leaving the dashboard.
 - Used the new diagnostics to catch a real latency issue in search, then capped the memory-search tool path with a short timeout so file/session/task hits still return promptly instead of the whole search view stalling for ~14 seconds.
 - Re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service.
+- Bumped the core web stack from Next 16.2.4 / React 19.2.5 to Next 16.2.6 / React 19.2.6 (plus `eslint-config-next`), re-verified with clean `npm test`, `npm run lint`, and `npm run build`, and restarted the dashboard service after the update.
 
 ## 2026-05-08
 
