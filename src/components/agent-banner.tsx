@@ -52,10 +52,23 @@ export function AgentBanner() {
     };
 
     void load();
-    const interval = window.setInterval(load, 30_000);
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        void load();
+      }
+    }, 30_000);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void load();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       mounted = false;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

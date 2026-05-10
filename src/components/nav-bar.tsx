@@ -31,11 +31,23 @@ export function NavBar() {
     };
 
     void check();
-    const interval = window.setInterval(check, 30_000);
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        void check();
+      }
+    }, 30_000);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void check();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       mounted = false;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

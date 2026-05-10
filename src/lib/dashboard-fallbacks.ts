@@ -59,42 +59,19 @@ export function buildFallbackAutomationWatchData(message = "Automation history i
 
 export function buildFallbackBannerData(message = "Mission Control banner data is unavailable right now.") {
   return {
-    agentName: "Annie's Mission Control",
     version: "unknown",
     latestVersion: "unknown",
     upToDate: true,
     stats: {
       model: "unknown",
-      contextUsage: "Unavailable",
       activeSessions: 0,
-      runtimeMode: "OpenClaw",
       scheduledJobs: 0,
-    },
-    quickInfo: {
-      humanName: process.env.HUMAN_NAME || "Vorster",
-      githubUsername: process.env.GITHUB_USERNAME || "Not set",
-      workspacePath: process.env.WORKSPACE_PATH || "/root/.openclaw/workspace",
-      secretsManager: process.env.SECRETS_MANAGER || ".env.local",
-    },
-    resources: [],
-    capabilities: [],
-    subAgents: [],
-    resourceSnapshot: {
-      timestamp: Date.now(),
-      memoryCurrentBytes: 0,
-      memoryLimitBytes: 0,
-      cpuUsageUsec: 0,
-      cpuLimitCores: 0,
-      pidsCurrent: 0,
-      pidsLimit: 0,
-      diskUsedBytes: 0,
-      diskTotalBytes: 0,
     },
     diagnostics: {
       summary: "warming up",
       routes: [],
     },
-    rawStatus: message,
+    note: message,
   };
 }
 

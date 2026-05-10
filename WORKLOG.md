@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-10
+
+- Slimmed the top-banner API down to the fields the UI actually renders, removing unused task/sub-agent/resource payload from every poll and trimming unnecessary background work from the dashboard chrome.
+- Paused the navbar/banner health polling while the tab is hidden and resumed on visibility, so Mission Control stays lighter when it’s open in the background without losing Annie’s live feel.
+- Re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service.
+
 ## 2026-05-09
 
 - Added lightweight internal route timing diagnostics for Mission Control’s key APIs (`banner`, `control-center`, `automation-watch`, `search`, `feed`, `health`, and `projects`), exposed them at `/api/diagnostics`, and surfaced Annie’s live speed read directly in the top banner so slow paths are visible without leaving the dashboard.

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -16,7 +15,6 @@ import {
   buildTaskTracker,
   parsePriorityItems,
   type ControlCenterData,
-  type ResourceSnapshot,
   type Session,
   type SessionsListResponse,
   type SourceHealth,
@@ -581,57 +579,6 @@ async function getStatusText() {
   });
 }
 
-async function readCgroupNumber(filePath: string) {
-  try {
-    const raw = (await fs.readFile(filePath, "utf8")).trim();
-    if (!raw || raw === "max") return null;
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getResourceSnapshot(): Promise<ResourceSnapshot> {
-  const [memoryCurrent, memoryLimitRaw, pidsCurrent, pidsLimitRaw, cpuStatRaw, cpuMaxRaw, statFs] = await Promise.all([
-    readCgroupNumber("/sys/fs/cgroup/memory.current"),
-    readCgroupNumber("/sys/fs/cgroup/memory.max"),
-    readCgroupNumber("/sys/fs/cgroup/pids.current"),
-    readCgroupNumber("/sys/fs/cgroup/pids.max"),
-    fs.readFile("/sys/fs/cgroup/cpu.stat", "utf8").catch(() => ""),
-    fs.readFile("/sys/fs/cgroup/cpu.max", "utf8").catch(() => "max 100000"),
-    fs.statfs("/"),
-  ]);
-
-  const totalMem = os.totalmem();
-  const cpuLine = cpuStatRaw
-    .split("\n")
-    .find((line) => line.startsWith("usage_usec "));
-  const cpuUsageUsec = cpuLine ? Number(cpuLine.split(/\s+/)[1]) || 0 : 0;
-
-  const [quotaRaw, periodRaw] = cpuMaxRaw.trim().split(/\s+/);
-  const cpuLimitCores = quotaRaw && quotaRaw !== "max" && periodRaw
-    ? Math.max(Number(quotaRaw) / Number(periodRaw), 0.1)
-    : os.cpus().length;
-
-  const blockSize = Number(statFs.bsize || 1);
-  const diskTotalBytes = Number(statFs.blocks) * blockSize;
-  const diskFreeBytes = Number(statFs.bavail ?? statFs.bfree ?? 0) * blockSize;
-  const diskUsedBytes = Math.max(diskTotalBytes - diskFreeBytes, 0);
-
-  return {
-    timestamp: Date.now(),
-    memoryCurrentBytes: memoryCurrent ?? 0,
-    memoryLimitBytes: memoryLimitRaw ?? totalMem,
-    cpuUsageUsec,
-    cpuLimitCores,
-    pidsCurrent: pidsCurrent ?? 0,
-    pidsLimit: pidsLimitRaw ?? 0,
-    diskUsedBytes,
-    diskTotalBytes,
-  };
-}
-
 async function getLatestOpenClawVersion() {
   return withCache("openclaw-latest-version", 30 * 60_000, async () => {
     try {
@@ -652,65 +599,16 @@ async function getLatestOpenClawVersion() {
 }
 
 export async function getBannerData() {
-  const [statusText, sessions, jobs, tasks, resourceSnapshot, latestVersion] = await Promise.all([
+  const [statusText, sessions, jobs, latestVersion] = await Promise.all([
     getStatusText(),
     getSessions(),
     getCronJobs(),
-    getTasks(),
-    getResourceSnapshot(),
     getLatestOpenClawVersion(),
   ]);
 
   const versionMatch = statusText.match(/OpenClaw\s+([^\s]+)/i);
   const modelMatch = statusText.match(/Model:\s+([^·\n]+)/i);
-  const contextMatch = statusText.match(/Context:\s+([^·\n]+)/i);
-  const runtimeMatch = statusText.match(/Runtime:\s+([^·\n]+)/i);
   const upToDate = latestVersion !== "unknown" && latestVersion === (versionMatch?.[1] || "");
-
-  const resources = [
-    ["OpenAI", !!process.env.OPENAI_API_KEY],
-    ["Anthropic", !!process.env.ANTHROPIC_API_KEY],
-    ["Google", !!process.env.GOOGLE_API_KEY],
-    ["OpenRouter", !!process.env.OPENROUTER_API_KEY],
-    ["GitHub", !!process.env.GITHUB_TOKEN],
-    ["Gateway", !!process.env.GATEWAY_TOKEN],
-  ]
-    .filter(([, enabled]) => enabled)
-    .map(([name]) => name);
-
-  const capabilities = [
-    "Web Browse",
-    "Shell Exec",
-    "File System",
-    "Cron Jobs",
-    "Session Control",
-    "Memory",
-    "Image Analysis",
-    "Image Generation",
-  ];
-
-  const subAgents = [
-    ...sessions.sessions
-      .filter((session) => session.key.includes(":subagent:") || session.key.includes(":cron:"))
-      .map((session) => ({
-        key: session.key,
-        label: session.key,
-        model: session.model || "unknown",
-        tokens: session.totalTokens || 0,
-        status: session.ageMs && session.ageMs < 120_000 ? "running" : "idle",
-        updatedAt: session.updatedAt || 0,
-        taskDescription: session.key,
-      })),
-    ...tasks.tasks.map((task) => ({
-      key: task.sessionKey || task.runId || task.taskId || "task",
-      label: task.title || task.runtime || task.taskId || "Task",
-      model: task.runtime || "task",
-      tokens: 0,
-      status: task.status || "unknown",
-      updatedAt: task.updatedAtMs || task.startedAtMs || task.createdAtMs || 0,
-      taskDescription: task.summary || task.sessionKey || task.taskId || "",
-    })),
-  ];
 
   const diagnosticsByRoute = new Map(getRouteDiagnostics().routes.map((route) => [route.route, route]));
   const speedRoutes = ["control-center", "automation-watch", "search"]
@@ -726,27 +624,14 @@ export async function getBannerData() {
   const slowestSpeedRoute = [...speedRoutes].sort((a, b) => b.lastDurationMs - a.lastDurationMs)[0];
 
   return {
-    agentName: "Annie's Mission Control",
     version: versionMatch?.[1] || "unknown",
     latestVersion,
     upToDate,
     stats: {
       model: modelMatch?.[1]?.trim() || sessions.sessions[0]?.model || "unknown",
-      contextUsage: contextMatch?.[1]?.trim() || `${sessions.sessions[0]?.contextTokens || 0} ctx`,
       activeSessions: sessions.count,
-      runtimeMode: runtimeMatch?.[1]?.trim() || "OpenClaw",
       scheduledJobs: jobs.jobs.length,
     },
-    quickInfo: {
-      humanName: process.env.HUMAN_NAME || "Vorster",
-      githubUsername: process.env.GITHUB_USERNAME || "Not set",
-      workspacePath: process.env.WORKSPACE_PATH || "/root/.openclaw/workspace",
-      secretsManager: process.env.SECRETS_MANAGER || ".env.local",
-    },
-    resources,
-    capabilities,
-    subAgents,
-    resourceSnapshot,
     diagnostics: {
       summary: !speedRoutes.length
         ? "warming up"
@@ -757,7 +642,6 @@ export async function getBannerData() {
             : "swift",
       routes: speedRoutes,
     },
-    rawStatus: statusText,
   };
 }
 
