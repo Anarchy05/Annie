@@ -13,6 +13,8 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-10
 
+- Added a direct `/health` route alias that re-exports the existing API health handler, so Mission Control now exposes a conventional app healthcheck path alongside `/api/health`.
+- Re-verified the health-route pass with clean `npm test`, `npm run lint`, and `npm run build` checks, confirmed the local dashboard answered cleanly on both `/api/health` and `/health`, and confirmed `origin/main` remained reachable with no new npm outdated signals.
 - Added a shared runtime cache layer with in-flight request deduping and failure-safe retry behavior, then moved Mission Control’s dashboard loaders onto it so concurrent banner/feed/control-center polls stop re-doing the same filesystem and OpenClaw work.
 - Added a shared JSON route wrapper for diagnostics, `no-store` headers, degraded fallbacks, and structured error responses, then moved the main dashboard/search/projects/health endpoints onto it to cut repeated boilerplate and keep route behavior more coherent.
 - Added focused cache-behavior coverage, then re-verified the refactor with clean `npm test`, `npm run lint`, and `npm run build` checks.
