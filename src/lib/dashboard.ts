@@ -34,6 +34,7 @@ import {
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { listProjects } from "@/lib/projects";
 import { classifyRouteSpeed, getRouteDiagnostics } from "@/lib/route-diagnostics";
+import { runtimeCache } from "@/lib/runtime-cache";
 
 const execFileAsync = promisify(execFile);
 const OPENCLAW_STATE_DIR = "/root/.openclaw";
@@ -43,20 +44,6 @@ const OPENCLAW_CRON_JOBS_FILE = path.join(OPENCLAW_STATE_DIR, "cron", "jobs.json
 const OPENCLAW_CRON_RUNS_DIR = path.join(OPENCLAW_STATE_DIR, "cron", "runs");
 const TODO_FILE = "/root/projects/mission-control/TODO.md";
 const DEFAULT_CONTEXT_TOKENS = 272000;
-
-const cache = new Map<string, { expiresAt: number; value: unknown }>();
-
-async function withCache<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T> {
-  const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && hit.expiresAt > now) {
-    return hit.value as T;
-  }
-
-  const value = await factory();
-  cache.set(key, { expiresAt: now + ttlMs, value });
-  return value;
-}
 
 type MessagePart = {
   type: "text" | "toolCall" | "thinking" | string;
@@ -156,7 +143,7 @@ async function runOpenClawText(args: string[], timeout = 15_000) {
 }
 
 export async function getSessions() {
-  return withCache("sessions", 5_000, async () => {
+  return runtimeCache.withCache("sessions", 5_000, async () => {
     try {
       const index = await readJsonFile<Record<string, Record<string, unknown>>>(OPENCLAW_SESSIONS_INDEX);
       const sessions = Object.entries(index).map(([key, value]) => ({
@@ -242,7 +229,7 @@ function extractBody(part: MessagePart, fallbackRole: string) {
 }
 
 export async function buildFeedTimeline() {
-  return withCache("feed", 5_000, async () => {
+  return runtimeCache.withCache("feed", 5_000, async () => {
     const sessions = await getSessions();
     const recentSessions = sessions.sessions.slice(0, 4);
     const histories = await Promise.all(
@@ -306,7 +293,7 @@ export async function buildFeedTimeline() {
 }
 
 export async function getCronJobs() {
-  return withCache("cron-jobs", 10_000, async () => {
+  return runtimeCache.withCache("cron-jobs", 10_000, async () => {
     try {
       const data = await readJsonFile<{ version?: number; jobs?: CronListResponse["jobs"] }>(OPENCLAW_CRON_JOBS_FILE);
       const jobs = (data.jobs || []).map((job) => {
@@ -400,7 +387,7 @@ export async function getCronRuns(jobId: string) {
 }
 
 async function getTasks() {
-  return withCache("tasks", 10_000, async () => {
+  return runtimeCache.withCache("tasks", 10_000, async () => {
     try {
       const response = await runOpenClawJson<TasksListResponse & {
         tasks?: Array<TasksListResponse["tasks"][number] & {
@@ -438,7 +425,7 @@ async function getTasks() {
 }
 
 async function getPriorityItems() {
-  return withCache("todo-priorities", 15_000, async () => {
+  return runtimeCache.withCache("todo-priorities", 15_000, async () => {
     try {
       const raw = await fs.readFile(TODO_FILE, "utf8");
       return parsePriorityItems(raw);
@@ -449,7 +436,7 @@ async function getPriorityItems() {
 }
 
 async function getProjectPulse() {
-  return withCache("project-pulse", 15_000, async () => {
+  return runtimeCache.withCache("project-pulse", 15_000, async () => {
     try {
       const projects = await listProjects();
       return projects
@@ -487,7 +474,7 @@ export {
 } from "@/lib/dashboard-fallbacks";
 
 export async function getControlCenterData() {
-  return withCache("control-center", 10_000, async () => {
+  return runtimeCache.withCache("control-center", 10_000, async () => {
     const [priorities, tasks, sessions, jobs, projects] = await Promise.all([
       getPriorityItems(),
       getTasks(),
@@ -550,7 +537,7 @@ export async function getControlCenterData() {
 }
 
 export async function getAutomationWatchData() {
-  return withCache("automation-watch", 20_000, async () => {
+  return runtimeCache.withCache("automation-watch", 20_000, async () => {
     const jobs = await getCronJobs();
     const enabledJobs = jobs.jobs
       .filter((job) => job.enabled !== false)
@@ -569,7 +556,7 @@ export async function getAutomationWatchData() {
 }
 
 async function getStatusText() {
-  return withCache("status-text", 60_000, async () => {
+  return runtimeCache.withCache("status-text", 60_000, async () => {
     try {
       const version = await runOpenClawText(["--version"], 5_000);
       return `OpenClaw ${version.replace(/^OpenClaw\s+/i, "")}`;
@@ -580,7 +567,7 @@ async function getStatusText() {
 }
 
 async function getLatestOpenClawVersion() {
-  return withCache("openclaw-latest-version", 30 * 60_000, async () => {
+  return runtimeCache.withCache("openclaw-latest-version", 30 * 60_000, async () => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2_000);

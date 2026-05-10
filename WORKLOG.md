@@ -13,6 +13,9 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-10
 
+- Added a shared runtime cache layer with in-flight request deduping and failure-safe retry behavior, then moved Mission Control’s dashboard loaders onto it so concurrent banner/feed/control-center polls stop re-doing the same filesystem and OpenClaw work.
+- Added a shared JSON route wrapper for diagnostics, `no-store` headers, degraded fallbacks, and structured error responses, then moved the main dashboard/search/projects/health endpoints onto it to cut repeated boilerplate and keep route behavior more coherent.
+- Added focused cache-behavior coverage, then re-verified the refactor with clean `npm test`, `npm run lint`, and `npm run build` checks.
 - Slimmed the top-banner API down to the fields the UI actually renders, removing unused task/sub-agent/resource payload from every poll and trimming unnecessary background work from the dashboard chrome.
 - Paused the navbar/banner health polling while the tab is hidden and resumed on visibility, so Mission Control stays lighter when it’s open in the background without losing Annie’s live feel.
 - Re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service.
