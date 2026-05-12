@@ -13,7 +13,7 @@ fi
 
 current_pid="$({ ss -ltnp "( sport = :${PORT} )" 2>/dev/null || true; } | awk -F'pid=' '/next-server/ { split($2, parts, ","); print parts[1]; exit }')"
 
-if systemctl show "${UNIT_FILE}" >/dev/null 2>&1; then
+if [[ "$(systemctl show "${UNIT_FILE}" --property=LoadState --value 2>/dev/null || true)" != "not-found" ]]; then
   systemctl restart "${UNIT_FILE}"
   systemctl status "${UNIT_FILE}" --no-pager --lines=20
   exit 0

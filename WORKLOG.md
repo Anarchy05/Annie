@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-12
+
+- Fixed `scripts/restart-dashboard-service.sh` so it now checks a unit's `LoadState` instead of trusting `systemctl show`'s exit code, which can report success even for missing units and break fresh restart attempts.
+- Re-verified the helper with a clean `bash -n scripts/restart-dashboard-service.sh` pass, an actual dashboard restart, and a live `curl http://127.0.0.1:3000/health` check; confirmed `origin/main` still matches local `main` and `npm outdated` stayed quiet.
+
 ## 2026-05-10
 
 - Added a direct `/health` route alias that re-exports the existing API health handler, so Mission Control now exposes a conventional app healthcheck path alongside `/api/health`.
