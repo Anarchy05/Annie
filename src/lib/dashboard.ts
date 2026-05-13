@@ -699,6 +699,7 @@ export async function buildSearchResults(query: string) {
       .map((session) => ({
         id: session.key,
         key: session.key,
+        sessionId: session.sessionId,
         label: session.key,
         model: session.model || "unknown",
         updatedAt: session.updatedAt || 0,

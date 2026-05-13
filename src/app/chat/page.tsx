@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
 import { splitMarkdownBlocks, tokenizeInline } from "@/lib/chat-markdown";
 
 type ChatMessage = {
@@ -24,6 +25,8 @@ type ChatArchive = {
   messageCount: number;
   preview: string;
 };
+
+type ChatMode = "live" | "archive" | "session";
 
 type DownloadableFile = {
   path: string;
@@ -48,6 +51,10 @@ export default function ChatPage() {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [archives, setArchives] = useState<ChatArchive[]>([]);
   const [activeArchiveId, setActiveArchiveId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [chatMode, setChatMode] = useState<ChatMode>("live");
+  const [activeConversationLabel, setActiveConversationLabel] = useState("Live chat");
+  const [missingTarget, setMissingTarget] = useState(false);
   const [sendingStartedAt, setSendingStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copyState, setCopyState] = useState<string | null>(null);
@@ -62,19 +69,33 @@ export default function ChatPage() {
 
     const load = async () => {
       try {
-        const archiveId = new URLSearchParams(window.location.search).get("archive");
-        const params = archiveId ? `?archive=${encodeURIComponent(archiveId)}` : "";
-        const response = await fetch(`/api/chat${params}`, { cache: "no-store" });
+        const searchParams = new URLSearchParams(window.location.search);
+        const archiveId = searchParams.get("archive");
+        const sessionId = searchParams.get("session");
+        const label = searchParams.get("label");
+        const params = new URLSearchParams();
+        if (archiveId) params.set("archive", archiveId);
+        if (sessionId) params.set("session", sessionId);
+        if (label) params.set("label", label);
+        const response = await fetch(`/api/chat${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Failed to load chat");
         const data = (await response.json()) as {
           messages: ChatMessage[];
           archives?: ChatArchive[];
           activeArchiveId?: string | null;
+          activeSessionId?: string | null;
+          activeConversationLabel?: string;
+          mode?: ChatMode;
+          missingTarget?: boolean;
         };
         if (mounted) {
           setMessages(data.messages);
           setArchives(data.archives || []);
           setActiveArchiveId(data.activeArchiveId || null);
+          setActiveSessionId(data.activeSessionId || null);
+          setActiveConversationLabel(data.activeConversationLabel || "Live chat");
+          setChatMode(data.mode || "live");
+          setMissingTarget(Boolean(data.missingTarget));
           setError(null);
         }
       } catch (err) {
@@ -115,8 +136,8 @@ export default function ChatPage() {
     element.style.height = `${Math.min(element.scrollHeight, 240)}px`;
   }, [input]);
 
-  const viewingArchive = Boolean(activeArchiveId);
-  const canSend = !viewingArchive && (input.trim().length > 0 || attachments.length > 0);
+  const viewingReadOnly = chatMode !== "live";
+  const canSend = !viewingReadOnly && (input.trim().length > 0 || attachments.length > 0);
 
   const transcriptMarkdown = useMemo(
     () => messages.map((message) => `## ${message.role === "user" ? "You" : "Annie"}\n\n${message.text}`).join("\n\n"),
@@ -124,7 +145,7 @@ export default function ChatPage() {
   );
 
   async function appendFiles(files: File[]) {
-    if (!files.length || viewingArchive) return;
+    if (!files.length || viewingReadOnly) return;
     const next = await createPendingAttachments(files.slice(0, MAX_ATTACHMENTS));
     setAttachments((current) => mergePendingAttachments(current, next));
     setError(null);
@@ -158,29 +179,44 @@ export default function ChatPage() {
     });
   }
 
-  async function loadConversation(archiveId?: string | null) {
-    const params = archiveId ? `?archive=${encodeURIComponent(archiveId)}` : "";
-    const response = await fetch(`/api/chat${params}`, { cache: "no-store" });
+  async function loadConversation(options?: { archiveId?: string | null; sessionId?: string | null; label?: string | null }) {
+    const params = new URLSearchParams();
+    if (options?.archiveId) params.set("archive", options.archiveId);
+    if (options?.sessionId) params.set("session", options.sessionId);
+    if (options?.label) params.set("label", options.label);
+    const response = await fetch(`/api/chat${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
     if (!response.ok) throw new Error("Failed to load chat");
     const data = (await response.json()) as {
       messages: ChatMessage[];
       archives?: ChatArchive[];
       activeArchiveId?: string | null;
+      activeSessionId?: string | null;
+      activeConversationLabel?: string;
+      mode?: ChatMode;
+      missingTarget?: boolean;
     };
     setMessages(data.messages);
     setArchives(data.archives || []);
     setActiveArchiveId(data.activeArchiveId || null);
+    setActiveSessionId(data.activeSessionId || null);
+    setActiveConversationLabel(data.activeConversationLabel || "Live chat");
+    setChatMode(data.mode || "live");
+    setMissingTarget(Boolean(data.missingTarget));
     const nextUrl = new URL(window.location.href);
     nextUrl.pathname = "/chat";
-    if (archiveId) nextUrl.searchParams.set("archive", archiveId);
-    else nextUrl.searchParams.delete("archive");
+    nextUrl.searchParams.delete("archive");
+    nextUrl.searchParams.delete("session");
+    nextUrl.searchParams.delete("label");
+    if (data.activeArchiveId) nextUrl.searchParams.set("archive", data.activeArchiveId);
+    if (data.activeSessionId) nextUrl.searchParams.set("session", data.activeSessionId);
+    if (data.activeConversationLabel && data.mode === "session") nextUrl.searchParams.set("label", data.activeConversationLabel);
     window.history.replaceState(null, "", nextUrl.toString());
     setError(null);
   }
 
   async function handleSend() {
     const message = input.trim();
-    if ((!message && !attachments.length) || sending || viewingArchive) return;
+    if ((!message && !attachments.length) || sending || viewingReadOnly) return;
 
     const queuedAttachments = attachments;
     const optimisticText = [message, ...queuedAttachments.map((attachment) => `[attachment] ${attachment.file.name}`)]
@@ -220,6 +256,10 @@ export default function ChatPage() {
       if (!response.ok) throw new Error(data.error || "Failed to send message");
       setArchives(data.archives || archives);
       setActiveArchiveId(data.activeArchiveId || null);
+      setActiveSessionId(null);
+      setActiveConversationLabel("Live chat");
+      setChatMode("live");
+      setMissingTarget(false);
       await streamAssistantMessages(data.messages || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -244,6 +284,10 @@ export default function ChatPage() {
       if (!response.ok) throw new Error(data.error || "Failed to clear chat");
       setMessages([]);
       setActiveArchiveId(null);
+      setActiveSessionId(null);
+      setActiveConversationLabel("Live chat");
+      setChatMode("live");
+      setMissingTarget(false);
       setError(null);
       await loadConversation();
     } catch (err) {
@@ -333,7 +377,7 @@ export default function ChatPage() {
                 </div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={viewingArchive}
+                  disabled={viewingReadOnly}
                   className="rounded-full border border-[#34D399]/30 bg-[#34D399]/10 px-3 py-2 text-sm text-[#6EE7B7] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Attach files
@@ -349,14 +393,14 @@ export default function ChatPage() {
                 {copyState === "transcript" ? "Copied" : "Copy chat"}
               </button>
               <button
-                onClick={() => void loadConversation(null)}
+                onClick={() => void loadConversation()}
                 className="rounded-full border border-[#60A5FA]/30 bg-[#60A5FA]/10 px-3 py-2 text-sm text-[#BFDBFE] hover:brightness-110"
               >
                 Live chat
               </button>
               <button
                 onClick={() => void handleClearChat()}
-                disabled={viewingArchive}
+                disabled={viewingReadOnly}
                 className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear chat
@@ -376,9 +420,9 @@ export default function ChatPage() {
 
             <div className="mt-4 space-y-3">
               <button
-                onClick={() => void loadConversation(null)}
+                onClick={() => void loadConversation()}
                 className={`w-full rounded-2xl border p-3 text-left transition ${
-                  !viewingArchive
+                  !viewingReadOnly
                     ? "border-[#34D399]/25 bg-[#34D399]/10"
                     : "border-white/8 bg-[#0E1020] hover:border-white/15"
                 }`}
@@ -387,13 +431,21 @@ export default function ChatPage() {
                 <p className="mt-1 text-sm text-white/55">Jump back into the active Annie thread.</p>
               </button>
 
+              {chatMode === "session" ? (
+                <div className="rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-4 text-sm text-[#DBEAFE]">
+                  <p className="font-medium text-white">Read-only session transcript</p>
+                  <p className="mt-1 text-sm text-[#DBEAFE]">{activeConversationLabel}</p>
+                  {activeSessionId ? <p className="mt-2 text-xs text-white/60">Session ID: {activeSessionId}</p> : null}
+                </div>
+              ) : null}
+
               {archives.length ? (
                 archives.map((archive) => (
                   <button
                     key={archive.id}
-                    onClick={() => void loadConversation(archive.id)}
+                    onClick={() => void loadConversation({ archiveId: archive.id })}
                     className={`w-full rounded-2xl border p-3 text-left transition ${
-                      activeArchiveId === archive.id
+                      chatMode === "archive" && activeArchiveId === archive.id
                         ? "border-[#60A5FA]/30 bg-[#60A5FA]/10"
                         : "border-white/8 bg-[#0E1020] hover:border-white/15"
                     }`}
@@ -440,9 +492,17 @@ export default function ChatPage() {
           ) : null}
 
           <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto p-5">
-            {viewingArchive ? (
+            {viewingReadOnly ? (
               <div className="rounded-2xl border border-[#60A5FA]/25 bg-[#60A5FA]/10 p-4 text-sm text-[#DBEAFE]">
-                You&apos;re browsing an archived Annie conversation. Return to <button onClick={() => void loadConversation(null)} className="underline decoration-[#93C5FD]/50 underline-offset-2 hover:text-white">live chat</button> to keep talking.
+                {chatMode === "archive" ? (
+                  <>
+                    You&apos;re browsing an archived Annie conversation. Return to <button onClick={() => void loadConversation()} className="underline decoration-[#93C5FD]/50 underline-offset-2 hover:text-white">live chat</button> to keep talking.
+                  </>
+                ) : (
+                  <>
+                    You&apos;re browsing a read-only session transcript from search: <span className="font-medium text-white">{activeConversationLabel}</span>. Return to <button onClick={() => void loadConversation()} className="underline decoration-[#93C5FD]/50 underline-offset-2 hover:text-white">live chat</button> to keep talking.
+                  </>
+                )}
               </div>
             ) : null}
             {loading ? (
@@ -451,6 +511,20 @@ export default function ChatPage() {
               ))
             ) : messages.length ? (
               messages.map((message) => <ChatBubble key={message.id} message={message} />)
+            ) : missingTarget ? (
+              <StatePanel
+                title={chatMode === "archive" ? "That archived chat wasn’t found" : "That session transcript wasn’t found"}
+                detail={chatMode === "archive" ? "It may have been removed or renamed. You can jump back to the live thread or choose another saved conversation." : "The session may have expired or its local transcript is no longer available. Try another search result or return to the live thread."}
+                tone="warning"
+                action={(
+                  <button
+                    onClick={() => void loadConversation()}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                  >
+                    Back to live chat
+                  </button>
+                )}
+              />
             ) : (
               <div className="rounded-2xl border border-white/8 bg-black/20 p-5 text-sm text-white/55">No chat history yet.</div>
             )}
@@ -489,20 +563,20 @@ export default function ChatPage() {
                   ref={textareaRef}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  disabled={viewingArchive}
+                  disabled={viewingReadOnly}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       void handleSend();
                     }
                   }}
-                  placeholder={viewingArchive ? "Return to live chat to send a new message..." : "Ask Annie anything..."}
+                  placeholder={viewingReadOnly ? "Return to live chat to send a new message..." : "Ask Annie anything..."}
                   className="max-h-60 min-h-[92px] w-full resize-none rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA] disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-white/40">
-                  {viewingArchive ? "Archive mode is read-only · switch back to live chat to send" : "Enter to send · Shift+Enter for newline · Drag files in to attach"}
+                  {viewingReadOnly ? `${chatMode === "archive" ? "Archive" : "Session"} mode is read-only · switch back to live chat to send` : "Enter to send · Shift+Enter for newline · Drag files in to attach"}
                 </p>
                 <button
                   onClick={() => void handleSend()}

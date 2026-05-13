@@ -2,13 +2,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 
+import {
+  CHAT_SESSION_ID,
+  SESSION_DIR,
+  readArchiveById,
+  readChatHistoryFromFile,
+  readSessionById,
+} from "@/lib/chat-transcripts";
 import { invokeOpenClaw } from "@/lib/openclaw";
 
 const execFileAsync = promisify(execFile);
-const CHAT_SESSION_ID = "annies-mission-control-chat";
-const SESSION_DIR = "/root/.openclaw/agents/main/sessions";
 const SESSION_FILE = path.join(SESSION_DIR, `${CHAT_SESSION_ID}.jsonl`);
 const UPLOAD_DIR = "/tmp/annies-mission-control-uploads";
 const TEXT_FILE_EXTENSIONS = new Set([
@@ -32,13 +37,6 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".xml",
 ]);
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  timestamp: number;
-};
-
 type UploadedAttachment = {
   name: string;
   type: string;
@@ -56,44 +54,6 @@ type ChatArchive = {
 
 async function ensureUploadDir() {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
-}
-
-async function readChatHistoryFromFile(filePath: string): Promise<ChatMessage[]> {
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    const rows = raw
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-
-    const messages: ChatMessage[] = [];
-
-    for (const row of rows) {
-      if (row.type !== "message") continue;
-      const message = row.message as { role?: string; content?: Array<{ type?: string; text?: string }> };
-      if (message.role !== "user" && message.role !== "assistant") continue;
-
-      const text = (message.content || [])
-        .filter((part) => part.type === "text" && typeof part.text === "string")
-        .map((part) => part.text?.trim() || "")
-        .join("\n\n")
-        .trim();
-
-      if (!text) continue;
-
-      const timestamp = typeof row.timestamp === "string" ? Date.parse(row.timestamp) : Date.now();
-      messages.push({
-        id: String(row.id || `${message.role}-${timestamp}`),
-        role: message.role,
-        text,
-        timestamp,
-      });
-    }
-
-    return messages.slice(-80);
-  } catch {
-    return [];
-  }
 }
 
 async function readChatHistory() {
@@ -117,7 +77,8 @@ async function listChatArchives(): Promise<ChatArchive[]> {
         const id = archiveIdFromFileName(fileName);
         if (!id) return null;
 
-        const messages = await readChatHistoryFromFile(path.join(SESSION_DIR, fileName));
+        const history = await readChatHistoryFromFile(path.join(SESSION_DIR, fileName));
+        const messages = history.messages;
         const archivedAt = Number(id);
         const previewSource = messages.find((message) => message.role === "user") || messages[0];
 
@@ -138,12 +99,6 @@ async function listChatArchives(): Promise<ChatArchive[]> {
   } catch {
     return [];
   }
-}
-
-async function readArchiveById(id: string) {
-  if (!/^\d+$/.test(id)) return [];
-  const archivePath = path.join(SESSION_DIR, `${CHAT_SESSION_ID}.${id}.bak.jsonl`);
-  return readChatHistoryFromFile(archivePath);
 }
 
 async function summarizeImage(imagePath: string, name: string) {
@@ -222,16 +177,26 @@ async function archiveChatHistory() {
 
 export async function GET(request: NextRequest) {
   const archiveId = request.nextUrl.searchParams.get("archive")?.trim() || null;
-  const [messages, archives] = await Promise.all([
-    archiveId ? readArchiveById(archiveId) : readChatHistory(),
+  const sessionId = request.nextUrl.searchParams.get("session")?.trim() || null;
+  const requestedLabel = request.nextUrl.searchParams.get("label")?.trim() || null;
+
+  const [history, archives] = await Promise.all([
+    sessionId ? readSessionById(sessionId) : archiveId ? readArchiveById(archiveId) : readChatHistory(),
     listChatArchives(),
   ]);
 
+  const mode = sessionId ? "session" : archiveId ? "archive" : "live";
+  const activeConversationLabel = requestedLabel || (sessionId ? `Session ${sessionId}` : archiveId ? "Archived chat" : "Live chat");
+
   return NextResponse.json(
     {
-      messages,
+      messages: history.messages,
       archives,
       activeArchiveId: archiveId,
+      activeSessionId: sessionId,
+      activeConversationLabel,
+      mode,
+      missingTarget: mode !== "live" && !history.exists,
     },
     { headers: { "Cache-Control": "no-store" } }
   );
@@ -296,9 +261,9 @@ export async function POST(request: NextRequest) {
     };
 
     const reply = result.result?.payloads?.map((payload) => payload.text || "").join("\n\n").trim() || "No reply returned.";
-    const messages = await readChatHistory();
+    const history = await readChatHistory();
 
-    return NextResponse.json({ reply, messages, attachments }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ reply, messages: history.messages, attachments }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

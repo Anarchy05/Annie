@@ -8,7 +8,7 @@ import { StatePanel } from "@/components/state-panels";
 type SearchResults = {
   memories: Array<{ id: string; path: string; line?: number; preview: string; score: number }>;
   files: Array<{ id: string; path: string; lineNumber: number; preview: string }>;
-  conversations: Array<{ id: string; key: string; label: string; model: string; updatedAt: number; status: string }>;
+  conversations: Array<{ id: string; key: string; sessionId: string; label: string; model: string; updatedAt: number; status: string }>;
   tasks: Array<{ id: string; name: string; description: string; schedule: string; enabled: boolean }>;
 };
 
@@ -101,7 +101,7 @@ export default function SearchPage() {
             <p className="mt-1 text-xs text-white/50">{item.model} · {item.status}</p>
             <p className="mt-2 text-sm text-white/70">Updated {new Date(item.updatedAt).toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <ResultLink href={`/chat?archive=${encodeURIComponent(item.key)}`}>Open chat</ResultLink>
+              <ResultLink href={`/chat?session=${encodeURIComponent(item.sessionId)}&label=${encodeURIComponent(item.label)}`}>Open transcript</ResultLink>
             </div>
           </>
         ),
