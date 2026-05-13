@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-13
+
+- Cleaned up Mission Control's live work/task wording so the dashboard now turns raw OpenClaw session keys and noisy sub-agent prompt blobs into clearer Annie-style labels like automation heartbeat, WhatsApp session, and sub-agent handoff.
+- Trimmed and normalized task/session detail text so active work and task-runway panels stay useful at a glance instead of dumping long internal strings.
+- Re-verified the polish pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
+
 ## 2026-05-12
 
 - Fixed `scripts/restart-dashboard-service.sh` so it now checks a unit's `LoadState` instead of trusting `systemctl show`'s exit code, which can report success even for missing units and break fresh restart attempts.

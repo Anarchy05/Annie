@@ -254,12 +254,75 @@ function getTaskTimestamp(task: TaskEntry) {
   return task.updatedAtMs || task.startedAtMs || task.createdAtMs || 0;
 }
 
+function compactText(value: string, maxLength = 160) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function humanizeSessionKey(key?: string) {
+  if (!key) return "session";
+  if (key.includes(":cron:")) return "automation heartbeat";
+  if (key.includes(":subagent:")) return "sub-agent session";
+  if (key.includes(":whatsapp:")) return "WhatsApp session";
+  if (key.includes(":web:")) return "web chat";
+  if (key.includes(":direct:")) return "direct session";
+  return compactText(key, 80);
+}
+
+function cleanTaskText(value?: string, fallback = "Task") {
+  if (!value) return fallback;
+  const firstLine = value.split("\n").find((line) => line.trim())?.trim() || fallback;
+  if (firstLine.startsWith("[Subagent Context]") || value.includes("You are running as a subagent")) {
+    return "Sub-agent handoff";
+  }
+  if (firstLine.startsWith("agent:") || firstLine.startsWith("system:")) {
+    return humanizeSessionKey(firstLine);
+  }
+  return compactText(firstLine, 120);
+}
+
+function cleanTaskDetail(value?: string, fallback = "OpenClaw task") {
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith("agent:") || trimmed.startsWith("system:")) {
+    return `via ${humanizeSessionKey(trimmed)}`;
+  }
+  return compactText(trimmed, 180);
+}
+
 function getTaskTitle(task: TaskEntry) {
-  return task.title || task.label || task.task || task.runtime || task.taskId || "Task";
+  return cleanTaskText(task.title || task.label || task.task || task.runtime || task.taskId, "Task");
 }
 
 function getTaskDetail(task: TaskEntry) {
-  return task.summary || task.terminalSummary || task.childSessionKey || task.sessionKey || task.ownerKey || "OpenClaw task";
+  return cleanTaskDetail(task.summary || task.terminalSummary || task.childSessionKey || task.sessionKey || task.ownerKey, "OpenClaw task");
+}
+
+function getSessionTitle(session: Session) {
+  if (session.key.includes(":cron:")) return "Automation heartbeat";
+  if (session.key.includes(":subagent:")) return "Sub-agent session";
+  if (session.key.includes(":whatsapp:")) return "WhatsApp session";
+  if (session.key.includes(":web:")) return "Web chat";
+  if ((session.kind || "").toLowerCase() === "direct") return "Direct session";
+  return cleanTaskText(session.key, "Session");
+}
+
+function getSessionDetail(session: Session) {
+  const parts = [session.model || "unknown"];
+  if (session.key.includes(":cron:")) {
+    parts.push("automation");
+  } else if (session.key.includes(":subagent:")) {
+    parts.push("sub-agent");
+  } else if (session.key.includes(":whatsapp:")) {
+    parts.push("WhatsApp");
+  } else if (session.key.includes(":web:")) {
+    parts.push("web");
+  } else {
+    parts.push(session.kind || "session");
+  }
+  return parts.join(" · ");
 }
 
 function getTaskStatusTone(status?: string): TaskTrackerItem["statusTone"] {
@@ -323,8 +386,8 @@ export function buildActiveWork(tasks: TaskEntry[], sessions: Session[]) {
       .slice(0, 6)
       .map((session) => ({
         id: `session-${session.key}`,
-        title: session.key,
-        detail: `${session.model || "unknown"} · ${session.kind || "session"}`,
+        title: getSessionTitle(session),
+        detail: getSessionDetail(session),
         status: (session.ageMs || 0) < 120_000 ? "running" : "recent",
         updatedAt: session.updatedAt || 0,
         source: session.key.includes(":cron:") ? ("cron" as const) : ("session" as const),

@@ -43,7 +43,7 @@ test("buildActiveWork prioritizes live tasks and recent sessions", () => {
     ],
     [
       {
-        key: "main-session",
+        key: "agent:main:cron:abc123",
         sessionId: "session-1",
         model: "gpt-5.4",
         kind: "direct",
@@ -64,7 +64,9 @@ test("buildActiveWork prioritizes live tasks and recent sessions", () => {
   assert.equal(activeWork[0]?.title, "Refactor dashboard");
   assert.equal(activeWork[0]?.detail, "Extract pure helpers");
   assert.equal(activeWork[0]?.status, "in progress");
-  assert.equal(activeWork[1]?.source, "session");
+  assert.equal(activeWork[1]?.source, "cron");
+  assert.equal(activeWork[1]?.title, "Automation heartbeat");
+  assert.equal(activeWork[1]?.detail, "gpt-5.4 · automation");
   assert.equal(activeWork[1]?.status, "running");
 });
 
@@ -84,9 +86,10 @@ test("buildTaskTracker summarizes running, queued, and failed tasks", () => {
     },
     {
       taskId: "failed-1",
-      label: "Network scan",
+      title: "[Subagent Context] You are running as a subagent",
       status: "error",
-      terminalSummary: "Timed out while waiting for the CLI.",
+      childSessionKey: "agent:main:subagent:abc123",
+      terminalSummary: "Timed out while waiting for the CLI.\nRetry later.",
       updatedAtMs: 490,
     },
     {
@@ -103,7 +106,8 @@ test("buildTaskTracker summarizes running, queued, and failed tasks", () => {
   assert.equal(tracker.summary.completed, 1);
   assert.match(tracker.headline, /live task/i);
   assert.equal(tracker.items[0]?.title, "Mission Control daily improvement");
-  assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI.");
+  assert.equal(tracker.items[1]?.title, "Sub-agent handoff");
+  assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI. Retry later.");
 });
 
 test("buildAgenda sorts enabled jobs by next run time", () => {
