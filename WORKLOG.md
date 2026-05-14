@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-14
+
+- Tightened the task-runway signal so Mission Control now counts only fresh failed tasks in Annie's live attention bucket, tucks older failures into a separate “older” count, and stops stale historical noise from making the dashboard feel more broken than it is.
+- Re-verified the task-noise pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service.
+
 ## 2026-05-13
 
 - Cleaned up Mission Control's live work/task wording so the dashboard now turns raw OpenClaw session keys and noisy sub-agent prompt blobs into clearer Annie-style labels like automation heartbeat, WhatsApp session, and sub-agent handoff.

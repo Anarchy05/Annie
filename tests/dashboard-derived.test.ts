@@ -70,44 +70,64 @@ test("buildActiveWork prioritizes live tasks and recent sessions", () => {
   assert.equal(activeWork[1]?.status, "running");
 });
 
-test("buildTaskTracker summarizes running, queued, and failed tasks", () => {
-  const tracker = buildTaskTracker([
-    {
-      taskId: "live-1",
-      label: "Mission Control daily improvement",
-      status: "running",
-      updatedAtMs: 500,
-    },
-    {
-      taskId: "queued-1",
-      task: "Repo cleanup",
-      status: "queued",
-      updatedAtMs: 450,
-    },
-    {
-      taskId: "failed-1",
-      title: "[Subagent Context] You are running as a subagent",
-      status: "error",
-      childSessionKey: "agent:main:subagent:abc123",
-      terminalSummary: "Timed out while waiting for the CLI.\nRetry later.",
-      updatedAtMs: 490,
-    },
-    {
-      taskId: "done-1",
-      label: "Healthcheck",
-      status: "succeeded",
-      updatedAtMs: 400,
-    },
-  ]);
+test("buildTaskTracker summarizes live task flow while tucking older failures into history", () => {
+  const now = Date.UTC(2026, 4, 14, 0, 0, 0);
+  const tracker = buildTaskTracker(
+    [
+      {
+        taskId: "live-1",
+        label: "Mission Control daily improvement",
+        status: "running",
+        updatedAtMs: now,
+      },
+      {
+        taskId: "queued-1",
+        task: "Repo cleanup",
+        status: "queued",
+        updatedAtMs: now - 5 * 60_000,
+      },
+      {
+        taskId: "failed-1",
+        title: "[Subagent Context] You are running as a subagent",
+        status: "error",
+        childSessionKey: "agent:main:subagent:abc123",
+        terminalSummary: "Timed out while waiting for the CLI.\nRetry later.",
+        updatedAtMs: now - 10 * 60_000,
+      },
+      {
+        taskId: "failed-old-1",
+        label: "Old failure",
+        status: "failed",
+        terminalSummary: "Happened days ago",
+        updatedAtMs: now - 3 * 24 * 60 * 60_000,
+      },
+      {
+        taskId: "done-1",
+        label: "Healthcheck",
+        status: "succeeded",
+        updatedAtMs: now - 30 * 60_000,
+      },
+      {
+        taskId: "done-old-1",
+        label: "Old completion",
+        status: "done",
+        updatedAtMs: now - 2 * 24 * 60 * 60_000,
+      },
+    ],
+    now
+  );
 
   assert.equal(tracker.summary.running, 1);
   assert.equal(tracker.summary.queued, 1);
   assert.equal(tracker.summary.attention, 1);
+  assert.equal(tracker.summary.staleAttention, 1);
   assert.equal(tracker.summary.completed, 1);
   assert.match(tracker.headline, /live task/i);
   assert.equal(tracker.items[0]?.title, "Mission Control daily improvement");
   assert.equal(tracker.items[1]?.title, "Sub-agent handoff");
   assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI. Retry later.");
+  assert.ok(!tracker.items.some((item) => item.title === "Old failure"));
+  assert.ok(!tracker.items.some((item) => item.title === "Old completion"));
 });
 
 test("buildAgenda sorts enabled jobs by next run time", () => {

@@ -106,6 +106,7 @@ export type TaskTrackerData = {
     running: number;
     queued: number;
     attention: number;
+    staleAttention: number;
     completed: number;
   };
   items: TaskTrackerItem[];
@@ -397,11 +398,23 @@ export function buildActiveWork(tasks: TaskEntry[], sessions: Session[]) {
     .slice(0, 8);
 }
 
-export function buildTaskTracker(tasks: TaskEntry[]): TaskTrackerData {
+export function buildTaskTracker(tasks: TaskEntry[], now = Date.now()): TaskTrackerData {
+  const RECENT_ATTENTION_WINDOW_MS = 36 * 60 * 60_000;
+  const RECENT_COMPLETION_WINDOW_MS = 24 * 60 * 60_000;
+
   const running = tasks.filter((task) => getTaskStatusTone(task.status) === "running");
   const queued = tasks.filter((task) => getTaskStatusTone(task.status) === "queued");
-  const attention = tasks.filter((task) => getTaskStatusTone(task.status) === "attention");
-  const completed = tasks.filter((task) => getTaskStatusTone(task.status) === "done");
+  const allAttention = tasks.filter((task) => getTaskStatusTone(task.status) === "attention");
+  const attention = allAttention.filter((task) => {
+    const timestamp = getTaskTimestamp(task);
+    return !timestamp || now - timestamp <= RECENT_ATTENTION_WINDOW_MS;
+  });
+  const staleAttention = Math.max(allAttention.length - attention.length, 0);
+  const completed = tasks.filter((task) => {
+    if (getTaskStatusTone(task.status) !== "done") return false;
+    const timestamp = getTaskTimestamp(task);
+    return !timestamp || now - timestamp <= RECENT_COMPLETION_WINDOW_MS;
+  });
 
   const headline = running.length
     ? `Annie has ${running.length} live task${running.length === 1 ? "" : "s"} in motion.`
@@ -409,7 +422,9 @@ export function buildTaskTracker(tasks: TaskEntry[]): TaskTrackerData {
       ? `${attention.length} recent task${attention.length === 1 ? " needs" : "s need"} a closer look.`
       : queued.length
         ? `${queued.length} queued task${queued.length === 1 ? " is" : "s are"} lined up next.`
-        : "Task traffic is calm right now.";
+        : staleAttention
+          ? "The live task runway is calm, with older failures tucked into history."
+          : "Task traffic is calm right now.";
 
   const note = running[0]
     ? getTaskTitle(running[0])
@@ -417,9 +432,11 @@ export function buildTaskTracker(tasks: TaskEntry[]): TaskTrackerData {
       ? getTaskDetail(attention[0])
       : queued[0]
         ? getTaskTitle(queued[0])
-        : completed[0]
-          ? `Latest completion: ${getTaskTitle(completed[0])}`
-          : "OpenClaw is not surfacing a live task queue at the moment.";
+        : staleAttention
+          ? `${staleAttention} older failed task signal${staleAttention === 1 ? " is" : "s are"} still on record, but Annie is keeping the live attention count focused on fresher work.`
+          : completed[0]
+            ? `Latest completion: ${getTaskTitle(completed[0])}`
+            : "OpenClaw is not surfacing a live task queue at the moment.";
 
   const items = [...running, ...attention, ...queued, ...completed]
     .sort((a, b) => {
@@ -445,6 +462,7 @@ export function buildTaskTracker(tasks: TaskEntry[]): TaskTrackerData {
       running: running.length,
       queued: queued.length,
       attention: attention.length,
+      staleAttention,
       completed: completed.length,
     },
     items,

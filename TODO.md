@@ -98,7 +98,7 @@ Core goals:
 
 ### P2 - Repo / Workflow
 
-- [ ] Add a CHANGELOG or WORKLOG for meaningful Annie-made improvements.
+- [x] Add a CHANGELOG or WORKLOG for meaningful Annie-made improvements.
 - [x] Add a lightweight release checklist for dashboard changes.
 - [x] Added focused tests for core dashboard derivation helpers after splitting the pure control-center/feed/automation logic out of the main server data module.
 - [x] Add a small integration test layer around dashboard file/OpenClaw boundary fallbacks. Added fallback-shape coverage for the control-center, automation-watch, banner, and feed degraded payloads so dashboard reliability regressions get caught quickly.
@@ -118,3 +118,4 @@ Core goals:
 - [x] Added a homepage project pulse with tracked-project progress, next-step guidance, and source-health badges.
 - [x] Added a dedicated Projects page and API-backed tracker for multi-repo workspace status, progress, and next steps.
 - [x] Improved chat markdown rendering so Annie now displays headings, blockquotes, tables, inline code, and clickable links more cleanly.
+- [x] Tightened the task-runway signal so older failed tasks no longer inflate Annie's live attention count, while still surfacing a separate older-failure indicator when useful.

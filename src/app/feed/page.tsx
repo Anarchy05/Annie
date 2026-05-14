@@ -20,6 +20,7 @@ type ControlCenterData = {
       running: number;
       queued: number;
       attention: number;
+      staleAttention: number;
       completed: number;
     };
     items: Array<{
@@ -99,7 +100,7 @@ const emptyControlCenter: ControlCenterData = {
   taskTracker: {
     headline: "Annie is checking the task runway.",
     note: "Live task details will appear after local state loads.",
-    summary: { running: 0, queued: 0, attention: 0, completed: 0 },
+    summary: { running: 0, queued: 0, attention: 0, staleAttention: 0, completed: 0 },
     items: [],
   },
   agenda: [],
@@ -362,6 +363,7 @@ export default function FeedPage() {
               headerRight={
                 <span className="text-xs text-white/40">
                   {controlCenter.taskTracker.summary.running} live · {controlCenter.taskTracker.summary.queued} queued · {controlCenter.taskTracker.summary.attention} attention
+                  {controlCenter.taskTracker.summary.staleAttention ? ` · ${controlCenter.taskTracker.summary.staleAttention} older` : ""}
                 </span>
               }
             >
@@ -378,6 +380,12 @@ export default function FeedPage() {
                   <SummaryMiniCard label="Attention" value={controlCenter.taskTracker.summary.attention} tone="attention" />
                   <SummaryMiniCard label="Done" value={controlCenter.taskTracker.summary.completed} tone="done" />
                 </div>
+
+                {controlCenter.taskTracker.summary.staleAttention ? (
+                  <p className="text-xs text-white/45">
+                    Annie tucked {controlCenter.taskTracker.summary.staleAttention} older failed task signal{controlCenter.taskTracker.summary.staleAttention === 1 ? "" : "s"} out of the live attention count so this runway stays focused on what&apos;s current.
+                  </p>
+                ) : null}
 
                 <div>
                   <SectionLabel label="Recent task flow" />
