@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-15
+
+- Added an Annie-style quick actions strip to the feed so Mission Control now turns live attention, automation trouble, upcoming beats, and project guidance into direct next-click actions instead of just passive status cards.
+- Added anchor targets for the feed's major panels, making the dashboard feel more like a compact command center on mobile and faster to navigate when something needs attention.
+- Re-verified the pass with clean `npm run lint` and `npm run build` checks.
+
 ## 2026-05-14
 
 - Tightened the task-runway signal so Mission Control now counts only fresh failed tasks in Annie's live attention bucket, tucks older failures into a separate “older” count, and stops stale historical noise from making the dashboard feel more broken than it is.

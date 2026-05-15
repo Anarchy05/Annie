@@ -95,6 +95,7 @@ Core goals:
 - [x] Improve sub-agent and active-work visibility so “busy with” is more useful. Split current work into clearer live/recent sections and highlight active threads on the feed.
 - [x] Add better cron run visibility and history where available. Added an Automation Watch panel on the feed with recent cron-run health plus the next scheduled beats.
 - [x] Add a compact dashboard summary view for quick mobile use. Added an Annie brief strip for top priority, live thread, and next beat on the feed.
+- [x] Add clearer dashboard quick actions so the feed becomes easier to steer from mobile or at-a-glance use. Added an Annie quick-actions strip with direct jumps into priorities, task runway, automation watch, projects, and chat.
 
 ### P2 - Repo / Workflow
 

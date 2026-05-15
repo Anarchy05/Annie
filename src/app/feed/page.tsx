@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 
@@ -179,6 +180,122 @@ export default function FeedPage() {
     void loadAutomationWatch();
   }, [loadAutomationWatch]);
 
+  const quickActions = useMemo(() => {
+    const actions: QuickAction[] = [];
+
+    if (error) {
+      actions.push({
+        id: "refresh-control-center",
+        label: "Wake the dashboard",
+        title: "Refresh Annie's read",
+        detail: "Mission Control hit a rough patch. Give it another pass.",
+        href: "#overview",
+        tone: "warning",
+        kind: "button",
+        onSelect: () => void load("refresh"),
+      });
+    } else if (controlCenter.taskTracker.summary.attention > 0) {
+      actions.push({
+        id: "task-attention",
+        label: "Needs attention",
+        title: `${controlCenter.taskTracker.summary.attention} task${controlCenter.taskTracker.summary.attention === 1 ? "" : "s"} need a decision`,
+        detail: "Jump to the task runway before stale work piles up.",
+        href: "#task-runway",
+        tone: "danger",
+        kind: "link",
+      });
+    } else if (liveWork.length > 0) {
+      actions.push({
+        id: "live-thread",
+        label: "Live now",
+        title: liveWork[0]?.title || "A live thread is moving",
+        detail: "Open chat or scan the current work panel to steer Annie.",
+        href: "/chat",
+        tone: "success",
+        kind: "link",
+      });
+    }
+
+    if (automationError) {
+      actions.push({
+        id: "automation-refresh",
+        label: "Automation watch",
+        title: "Refresh recent run health",
+        detail: "Automation signals went fuzzy. Reload the watch panel.",
+        href: "#automation-watch",
+        tone: "warning",
+        kind: "button",
+        onSelect: () => void loadAutomationWatch(),
+      });
+    } else if ((automationWatch?.summary.failing || 0) > 0) {
+      actions.push({
+        id: "automation-failing",
+        label: "Automation watch",
+        title: `${automationWatch?.summary.failing || 0} job${automationWatch?.summary.failing === 1 ? "" : "s"} are failing`,
+        detail: "Check the latest cron health before the next beat lands.",
+        href: "#automation-watch",
+        tone: "danger",
+        kind: "link",
+      });
+    } else if (controlCenter.agenda[0]) {
+      actions.push({
+        id: "next-beat",
+        label: "Next beat",
+        title: controlCenter.agenda[0].title,
+        detail: `${formatRelativeFuture(controlCenter.agenda[0].timestamp)} · ${controlCenter.agenda[0].detail}`,
+        href: "/calendar",
+        tone: "info",
+        kind: "link",
+      });
+    }
+
+    if (controlCenter.priorities[0]) {
+      actions.push({
+        id: "top-priority",
+        label: "Top priority",
+        title: controlCenter.priorities[0].text,
+        detail: `From ${controlCenter.priorities[0].group}. Keep Annie pointed here.`,
+        href: "#top-priorities",
+        tone: "info",
+        kind: "link",
+      });
+    } else {
+      actions.push({
+        id: "set-direction",
+        label: "Set direction",
+        title: "Backlog is quiet",
+        detail: "Open projects and give Annie the next valuable target.",
+        href: "/projects",
+        tone: "success",
+        kind: "link",
+      });
+    }
+
+    if (controlCenter.projects[0]) {
+      actions.push({
+        id: "project-pulse",
+        label: "Project pulse",
+        title: controlCenter.projects[0].name,
+        detail: controlCenter.projects[0].nextStep || controlCenter.projects[0].summary,
+        href: "#project-pulse",
+        tone: "info",
+        kind: "link",
+      });
+    }
+
+    actions.push({
+      id: "ask-annie",
+      label: "Annie help",
+      title: "Ask Annie for a steer",
+      detail: "Open chat for a plain-English rundown or next-step help.",
+      href: "/chat",
+      tone: "success",
+      kind: "link",
+    });
+
+    return actions.slice(0, 4);
+  }, [automationError, automationWatch, controlCenter, error, liveWork, load, loadAutomationWatch]);
+
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
     const interval = window.setInterval(() => {
@@ -223,10 +340,19 @@ export default function FeedPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div id="overview" className="mt-5 grid gap-3 sm:grid-cols-3">
             <SummaryCard label="Priorities" value={controlCenter.summary.openPriorities} />
             <SummaryCard label="Active now" value={controlCenter.summary.activeNow} />
             <SummaryCard label="Up next" value={controlCenter.summary.upcomingJobs} />
+          </div>
+
+          <div className="mt-4">
+            <SectionLabel label="Annie's quick actions" />
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {quickActions.map((action) => (
+                <QuickActionCard key={action.id} action={action} />
+              ))}
+            </div>
           </div>
 
           {controlCenter.meta.sources.length ? (
@@ -294,7 +420,7 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Top priorities">
+            <Panel id="top-priorities" title="Top priorities">
               {controlCenter.priorities.length ? (
                 <div className="space-y-3">
                   {controlCenter.priorities.slice(0, 6).map((item) => (
@@ -307,6 +433,7 @@ export default function FeedPage() {
             </Panel>
 
             <Panel
+              id="current-work"
               title="Current work"
               headerRight={
                 controlCenter.activeWork.length ? (
@@ -359,6 +486,7 @@ export default function FeedPage() {
             </Panel>
 
             <Panel
+              id="task-runway"
               title="Task runway"
               headerRight={
                 <span className="text-xs text-white/40">
@@ -410,6 +538,7 @@ export default function FeedPage() {
             </Panel>
 
             <Panel
+              id="automation-watch"
               title="Automation watch"
               headerRight={
                 automationWatch ? (
@@ -476,7 +605,7 @@ export default function FeedPage() {
               </div>
             </Panel>
 
-            <Panel title="Project pulse">
+            <Panel id="project-pulse" title="Project pulse">
               <div className="space-y-3">
                 <div className="rounded-2xl border border-[#60A5FA]/20 bg-[linear-gradient(135deg,rgba(96,165,250,0.12),rgba(167,139,250,0.12))] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-white/45">Annie&apos;s next move</p>
@@ -535,17 +664,30 @@ function SummaryMiniCard({
   );
 }
 
+type QuickAction = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  href: string;
+  tone: "info" | "success" | "warning" | "danger";
+  kind: "link" | "button";
+  onSelect?: () => void;
+};
+
 function Panel({
+  id,
   title,
   headerRight,
   children,
 }: {
+  id?: string;
   title: string;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
+    <section id={id} className="scroll-mt-24 rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-white">{title}</h3>
         {headerRight}
@@ -562,6 +704,32 @@ function BriefCard({ label, title, detail }: { label: string; title: string; det
       <p className="mt-2 text-sm font-medium text-white">{title}</p>
       <p className="mt-1 text-sm text-white/55">{detail}</p>
     </div>
+  );
+}
+
+function QuickActionCard({ action }: { action: QuickAction }) {
+  const classes = `rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-white/20 ${quickActionTone(action.tone)}`;
+  const content = (
+    <>
+      <p className="text-[11px] uppercase tracking-[0.18em] text-white/40">{action.label}</p>
+      <p className="mt-2 text-sm font-medium text-white">{action.title}</p>
+      <p className="mt-1 text-sm text-white/65">{action.detail}</p>
+      <p className="mt-3 text-xs font-medium text-white/75">{action.kind === "button" ? "Refresh now →" : "Open →"}</p>
+    </>
+  );
+
+  if (action.kind === "button") {
+    return (
+      <button type="button" onClick={action.onSelect} className={classes}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={action.href} className={classes}>
+      {content}
+    </Link>
   );
 }
 
@@ -700,4 +868,11 @@ function attentionTone(tone: ControlCenterData["alerts"][number]["tone"]) {
   if (tone === "warning") return "border-yellow-400/30 bg-yellow-400/10";
   if (tone === "focus") return "border-[#60A5FA]/25 bg-[#60A5FA]/10";
   return "border-white/10 bg-black/20";
+}
+
+function quickActionTone(tone: QuickAction["tone"]) {
+  if (tone === "danger") return "border-red-400/30 bg-red-400/10";
+  if (tone === "warning") return "border-yellow-400/30 bg-yellow-400/10";
+  if (tone === "success") return "border-[#34D399]/25 bg-[#34D399]/10";
+  return "border-[#60A5FA]/25 bg-[#60A5FA]/10";
 }
