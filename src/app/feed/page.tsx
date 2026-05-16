@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StatePanel } from "@/components/state-panels";
 
 type ControlCenterData = {
   priorities: Array<{ id: string; group: string; text: string }>;
@@ -147,6 +148,10 @@ export default function FeedPage() {
       }),
     [controlCenter.activeWork]
   );
+  const sourcesByKey = useMemo(
+    () => new Map(controlCenter.meta.sources.map((source) => [source.key, source] as const)),
+    [controlCenter.meta.sources]
+  );
 
   const loadAutomationWatch = useCallback(async () => {
     try {
@@ -163,8 +168,11 @@ export default function FeedPage() {
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRefreshing(true);
 
+    const controlCenterPromise = fetch("/api/control-center", { cache: "no-store" });
+    const automationPromise = loadAutomationWatch();
+
     try {
-      const response = await fetch("/api/control-center", { cache: "no-store" });
+      const response = await controlCenterPromise;
       if (!response.ok) throw new Error("Control center data is unavailable right now.");
       const data = (await response.json()) as ControlCenterData;
       setControlCenter(data);
@@ -173,11 +181,10 @@ export default function FeedPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Control center data is unavailable right now.");
     } finally {
+      await automationPromise;
       setLoading(false);
       setRefreshing(false);
     }
-
-    void loadAutomationWatch();
   }, [loadAutomationWatch]);
 
   const quickActions = useMemo(() => {
@@ -341,9 +348,9 @@ export default function FeedPage() {
           </div>
 
           <div id="overview" className="mt-5 grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Priorities" value={controlCenter.summary.openPriorities} />
-            <SummaryCard label="Active now" value={controlCenter.summary.activeNow} />
-            <SummaryCard label="Up next" value={controlCenter.summary.upcomingJobs} />
+            <SummaryCard label="Priorities" value={loading ? "…" : error ? "—" : controlCenter.summary.openPriorities} />
+            <SummaryCard label="Active now" value={loading ? "…" : error ? "—" : controlCenter.summary.activeNow} />
+            <SummaryCard label="Up next" value={loading ? "…" : error ? "—" : controlCenter.summary.upcomingJobs} />
           </div>
 
           <div className="mt-4">
@@ -421,12 +428,33 @@ export default function FeedPage() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel id="top-priorities" title="Top priorities">
-              {controlCenter.priorities.length ? (
+              {error ? (
+                <StatePanel
+                  title="Priority read is unavailable"
+                  detail={error}
+                  tone="warning"
+                  action={(
+                    <button
+                      type="button"
+                      onClick={() => void load("refresh")}
+                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                    >
+                      Refresh priorities
+                    </button>
+                  )}
+                />
+              ) : controlCenter.priorities.length ? (
                 <div className="space-y-3">
                   {controlCenter.priorities.slice(0, 6).map((item) => (
                     <ItemCard key={item.id} eyebrow={item.group} title={item.text} />
                   ))}
                 </div>
+              ) : sourcesByKey.get("todo")?.status === "degraded" ? (
+                <StatePanel
+                  title="Priority backlog is partially unavailable"
+                  detail={sourcesByKey.get("todo")?.detail || "Mission Control couldn't confirm the current backlog from TODO.md."}
+                  tone="warning"
+                />
               ) : (
                 <EmptyPanel text="No open priorities found." />
               )}
@@ -441,7 +469,22 @@ export default function FeedPage() {
                 ) : undefined
               }
             >
-              {controlCenter.activeWork.length ? (
+              {error ? (
+                <StatePanel
+                  title="Live work is unavailable"
+                  detail={error}
+                  tone="warning"
+                  action={(
+                    <button
+                      type="button"
+                      onClick={() => void load("refresh")}
+                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                    >
+                      Refresh live work
+                    </button>
+                  )}
+                />
+              ) : controlCenter.activeWork.length ? (
                 <div className="space-y-4">
                   {liveWork.length ? (
                     <div>
@@ -480,6 +523,12 @@ export default function FeedPage() {
                     </div>
                   ) : null}
                 </div>
+              ) : sourcesByKey.get("tasks")?.status === "degraded" || sourcesByKey.get("sessions")?.status === "degraded" ? (
+                <StatePanel
+                  title="Live work is partially unavailable"
+                  detail={[sourcesByKey.get("tasks")?.detail, sourcesByKey.get("sessions")?.detail].filter(Boolean).join(" · ") || "Mission Control couldn't fully confirm Annie's current work."}
+                  tone="warning"
+                />
               ) : (
                 <EmptyPanel text="Nothing active right now." />
               )}
@@ -518,7 +567,22 @@ export default function FeedPage() {
                 <div>
                   <SectionLabel label="Recent task flow" />
                   <div className="mt-2 space-y-3">
-                    {controlCenter.taskTracker.items.length ? (
+                    {error ? (
+                      <StatePanel
+                        title="Task runway is unavailable"
+                        detail={error}
+                        tone="warning"
+                        action={(
+                          <button
+                            type="button"
+                            onClick={() => void load("refresh")}
+                            className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                          >
+                            Refresh runway
+                          </button>
+                        )}
+                      />
+                    ) : controlCenter.taskTracker.items.length ? (
                       controlCenter.taskTracker.items.map((item) => (
                         <ItemCard
                           key={item.id}
@@ -529,6 +593,12 @@ export default function FeedPage() {
                           highlight={item.statusTone === "running" || item.statusTone === "attention"}
                         />
                       ))
+                    ) : sourcesByKey.get("tasks")?.status === "degraded" ? (
+                      <StatePanel
+                        title="Task state is partially unavailable"
+                        detail={sourcesByKey.get("tasks")?.detail || "Mission Control couldn't confirm the local task queue."}
+                        tone="warning"
+                      />
                     ) : (
                       <EmptyPanel text="No live task queue is surfacing yet." />
                     )}
@@ -567,6 +637,12 @@ export default function FeedPage() {
                           detail={item.detail}
                         />
                       ))
+                    ) : sourcesByKey.get("cron")?.status === "degraded" ? (
+                      <StatePanel
+                        title="Schedule read is partially unavailable"
+                        detail={sourcesByKey.get("cron")?.detail || "Mission Control couldn't confirm the next scheduled beats."}
+                        tone="warning"
+                      />
                     ) : (
                       <EmptyPanel text="No upcoming scheduled jobs." />
                     )}
@@ -577,7 +653,20 @@ export default function FeedPage() {
                   <SectionLabel label="Recent run health" />
                   <div className="mt-2 space-y-3">
                     {automationError ? (
-                      <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-sm text-yellow-100">{automationError}</div>
+                      <StatePanel
+                        title="Automation watch is temporarily unavailable"
+                        detail={automationError}
+                        tone="warning"
+                        action={(
+                          <button
+                            type="button"
+                            onClick={() => void loadAutomationWatch()}
+                            className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                          >
+                            Refresh automation watch
+                          </button>
+                        )}
+                      />
                     ) : automationWatch ? (
                       automationWatch.items.length ? (
                         automationWatch.items.map((item) => (
@@ -613,7 +702,22 @@ export default function FeedPage() {
                   <p className="mt-1 text-sm text-white/70">{controlCenter.recommendation.note}</p>
                 </div>
 
-                {controlCenter.projects.length ? (
+                {error ? (
+                  <StatePanel
+                    title="Project pulse is unavailable"
+                    detail={error}
+                    tone="warning"
+                    action={(
+                      <button
+                        type="button"
+                        onClick={() => void load("refresh")}
+                        className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+                      >
+                        Refresh project pulse
+                      </button>
+                    )}
+                  />
+                ) : controlCenter.projects.length ? (
                   controlCenter.projects.map((project) => (
                     <ProjectCard key={project.id} project={project} />
                   ))
@@ -629,7 +733,7 @@ export default function FeedPage() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.18em] text-white/35">{label}</p>

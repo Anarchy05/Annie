@@ -41,9 +41,9 @@ export default function ProjectsPage() {
   async function load() {
     try {
       const response = await fetch("/api/projects", { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load projects");
-      const data = (await response.json()) as { projects: ProjectEntry[] };
-      setProjects(data.projects);
+      const data = (await response.json()) as { error?: string; projects?: ProjectEntry[] };
+      if (!response.ok) throw new Error(data.error || "Failed to load projects");
+      setProjects(data.projects || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -115,7 +115,20 @@ export default function ProjectsPage() {
               <h3 className="text-base font-semibold text-white">Tracked projects</h3>
               <button onClick={() => void load()} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 hover:text-white">Refresh</button>
             </div>
-            {error ? <div className="mt-4 rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-sm text-yellow-100">{error}</div> : null}
+            {error && projects.length ? (
+              <div className="mt-4">
+                <StatePanel
+                  title="Project refresh hit a snag"
+                  detail={error}
+                  tone="warning"
+                  action={(
+                    <button onClick={() => void load()} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/80 hover:text-white">
+                      Try again
+                    </button>
+                  )}
+                />
+              </div>
+            ) : null}
             {loading ? (
               <div className="mt-4 space-y-3">
                 {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-36 rounded-2xl border border-[#2A2A3E] bg-black/20 skeleton" />)}
@@ -190,10 +203,23 @@ export default function ProjectsPage() {
                   </div>
                 ))}
                 {!projects.length ? (
-                  <StatePanel
-                    title="No projects are being tracked yet"
-                    detail="Add the first workspace on the right so Annie can keep progress, status, and next-step guidance in one place."
-                  />
+                  error ? (
+                    <StatePanel
+                      title="Projects are unavailable right now"
+                      detail={error}
+                      tone="warning"
+                      action={(
+                        <button onClick={() => void load()} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/80 hover:text-white">
+                          Refresh projects
+                        </button>
+                      )}
+                    />
+                  ) : (
+                    <StatePanel
+                      title="No projects are being tracked yet"
+                      detail="Add the first workspace on the right so Annie can keep progress, status, and next-step guidance in one place."
+                    />
+                  )
                 ) : null}
               </div>
             )}

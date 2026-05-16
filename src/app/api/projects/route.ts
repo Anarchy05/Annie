@@ -1,9 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 import { runJsonRoute } from "@/lib/api-route";
-import { createProject, listProjects, type ProjectStatus, updateProject } from "@/lib/projects";
+import { createProject, listProjects, ProjectStoreError, type ProjectStatus, updateProject } from "@/lib/projects";
 
 function isValidStatus(value: unknown): value is ProjectStatus {
   return value === "planned" || value === "active" || value === "blocked" || value === "done";
+}
+
+function getProjectErrorStatus(error: unknown) {
+  if (error instanceof ProjectStoreError) {
+    return error.code === "not-found" ? 404 : 400;
+  }
+
+  if (error instanceof SyntaxError) {
+    return 400;
+  }
+
+  return 500;
+}
+
+function getProjectErrorMessage(error: unknown) {
+  if (error instanceof SyntaxError) {
+    return "Request body must be valid JSON";
+  }
+
+  return error instanceof Error ? error.message : "Unknown error";
 }
 
 export async function GET() {
@@ -35,10 +55,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: getProjectErrorMessage(error) }, { status: getProjectErrorStatus(error) });
   }
 }
 
@@ -63,9 +80,6 @@ export async function PATCH(request: NextRequest) {
     const project = await updateProject(body.id, patch);
     return NextResponse.json({ project });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: getProjectErrorMessage(error) }, { status: getProjectErrorStatus(error) });
   }
 }

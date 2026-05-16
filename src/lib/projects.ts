@@ -26,6 +26,15 @@ type ProjectsDocument = {
   projects: ProjectEntry[];
 };
 
+export class ProjectStoreError extends Error {
+  code: "validation" | "not-found";
+
+  constructor(code: "validation" | "not-found", message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 const defaultProjects: ProjectEntry[] = [
   {
     id: "mission-control",
@@ -127,7 +136,7 @@ export async function createProject(input: Omit<ProjectEntry, "id" | "updatedAt"
   const project = normalizeProject({ ...input, updatedAt: Date.now() });
 
   if (!project) {
-    throw new Error("Project name, workspace path, and summary are required");
+    throw new ProjectStoreError("validation", "Project name, workspace path, and summary are required");
   }
 
   doc.projects = [project, ...doc.projects.filter((entry) => entry.id !== project.id)];
@@ -139,7 +148,7 @@ export async function updateProject(id: string, patch: Partial<Omit<ProjectEntry
   const doc = await readDoc();
   const index = doc.projects.findIndex((entry) => entry.id === id);
   if (index === -1) {
-    throw new Error("Project not found");
+    throw new ProjectStoreError("not-found", "Project not found");
   }
 
   const current = doc.projects[index];
@@ -151,7 +160,7 @@ export async function updateProject(id: string, patch: Partial<Omit<ProjectEntry
   });
 
   if (!next) {
-    throw new Error("Project name, workspace path, and summary are required");
+    throw new ProjectStoreError("validation", "Project name, workspace path, and summary are required");
   }
 
   doc.projects[index] = next;

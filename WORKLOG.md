@@ -11,6 +11,13 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-16
+
+- Hardened the feed’s degraded-state UX so panel-level failures now say what actually went fuzzy instead of quietly pretending everything is empty; Mission Control now keeps Annie’s tone while offering direct refresh actions for priorities, live work, task runway, automation watch, schedule, and project pulse.
+- Started the feed’s automation-watch fetch in parallel with the main control-center request so the dashboard wakes up a bit faster instead of serially waiting on that second call.
+- Re-verified the pass with clean `npm run lint` and `npm run build`, restarted the dashboard service, and confirmed `/health` plus `/feed` returned cleanly.
+- Hardened the Projects flow so `/api/projects` now returns cleaner 400/404 responses for malformed or missing input, while the Projects page keeps stale cards visible on refresh failures and swaps empty-space dead ends for actionable degraded-state panels.
+
 ## 2026-05-15
 
 - Added an Annie-style quick actions strip to the feed so Mission Control now turns live attention, automation trouble, upcoming beats, and project guidance into direct next-click actions instead of just passive status cards.
