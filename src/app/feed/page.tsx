@@ -1,127 +1,35 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import {
+  AttentionCard,
+  BriefCard,
+  EmptyPanel,
+  ItemCard,
+  Panel,
+  ProjectCard,
+  type QuickAction,
+  QuickActionCard,
+  SectionLabel,
+  SourceBadge,
+  SummaryCard,
+  SummaryMiniCard,
+} from "@/components/feed-cards";
 import { PageShell } from "@/components/page-shell";
 import { StatePanel } from "@/components/state-panels";
-
-type ControlCenterData = {
-  priorities: Array<{ id: string; group: string; text: string }>;
-  activeWork: Array<{
-    id: string;
-    title: string;
-    detail: string;
-    status: string;
-    updatedAt: number;
-    source: "task" | "session" | "cron";
-  }>;
-  taskTracker: {
-    headline: string;
-    note: string;
-    summary: {
-      running: number;
-      queued: number;
-      attention: number;
-      staleAttention: number;
-      completed: number;
-    };
-    items: Array<{
-      id: string;
-      title: string;
-      detail: string;
-      status: string;
-      statusTone: "running" | "queued" | "attention" | "done" | "other";
-      updatedAt: number;
-    }>;
-  };
-  agenda: Array<{ id: string; title: string; detail: string; timestamp: number }>;
-  projects: Array<{
-    id: string;
-    name: string;
-    status: "planned" | "active" | "blocked" | "done";
-    progress: number;
-    summary: string;
-    nextStep?: string;
-    updatedAt: number;
-    pinned?: boolean;
-  }>;
-  alerts: Array<{
-    id: string;
-    tone: "warning" | "focus" | "info";
-    title: string;
-    detail: string;
-  }>;
-  summary: {
-    openPriorities: number;
-    activeNow: number;
-    upcomingJobs: number;
-  };
-  focus: {
-    headline: string;
-    note: string;
-  };
-  recommendation: {
-    headline: string;
-    note: string;
-  };
-  meta: {
-    generatedAt: number;
-    sources: Array<{
-      key: "todo" | "tasks" | "sessions" | "cron";
-      label: string;
-      status: "ok" | "degraded";
-      detail: string;
-    }>;
-  };
-};
-
-type AutomationWatchData = {
-  generatedAt: number;
-  headline: string;
-  note: string;
-  summary: {
-    failing: number;
-    warning: number;
-    upcoming: number;
-  };
-  items: Array<{
-    id: string;
-    title: string;
-    detail: string;
-    nextRunAt?: number;
-    lastRunAt?: number;
-    lastRunStatus: string;
-    lastRunSummary: string;
-    status: "healthy" | "warning" | "failing" | "idle";
-  }>;
-};
-
-const emptyControlCenter: ControlCenterData = {
-  priorities: [],
-  activeWork: [],
-  taskTracker: {
-    headline: "Annie is checking the task runway.",
-    note: "Live task details will appear after local state loads.",
-    summary: { running: 0, queued: 0, attention: 0, staleAttention: 0, completed: 0 },
-    items: [],
-  },
-  agenda: [],
-  projects: [],
-  alerts: [],
-  summary: { openPriorities: 0, activeNow: 0, upcomingJobs: 0 },
-  focus: {
-    headline: "Mission Control is waking up.",
-    note: "Waiting for local state to load.",
-  },
-  recommendation: {
-    headline: "Annie is getting oriented.",
-    note: "Project guidance will appear after local state loads.",
-  },
-  meta: {
-    generatedAt: 0,
-    sources: [],
-  },
-};
+import {
+  buildLiveWorkItems,
+  buildQuickActionPlans,
+  buildRecentWorkItems,
+  buildSourcesMap,
+  deriveFeedStatus,
+  emptyControlCenter,
+  formatRelative,
+  formatRelativeFuture,
+  type AutomationWatchData,
+  type ControlCenterData,
+} from "@/lib/feed-view-model";
 
 export default function FeedPage() {
   const [controlCenter, setControlCenter] = useState<ControlCenterData>(emptyControlCenter);
@@ -132,25 +40,12 @@ export default function FeedPage() {
   const [automationError, setAutomationError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
 
-  const liveWork = useMemo(
-    () =>
-      controlCenter.activeWork.filter((item) => {
-        const status = item.status.toLowerCase();
-        return ["running", "active", "in progress"].includes(status);
-      }),
-    [controlCenter.activeWork]
-  );
-  const recentWork = useMemo(
-    () =>
-      controlCenter.activeWork.filter((item) => {
-        const status = item.status.toLowerCase();
-        return !["running", "active", "in progress"].includes(status);
-      }),
-    [controlCenter.activeWork]
-  );
-  const sourcesByKey = useMemo(
-    () => new Map(controlCenter.meta.sources.map((source) => [source.key, source] as const)),
-    [controlCenter.meta.sources]
+  const liveWork = useMemo(() => buildLiveWorkItems(controlCenter), [controlCenter]);
+  const recentWork = useMemo(() => buildRecentWorkItems(controlCenter), [controlCenter]);
+  const sourcesByKey = useMemo(() => buildSourcesMap(controlCenter), [controlCenter]);
+  const feedStatus = useMemo(
+    () => deriveFeedStatus({ lastLoadedAt, hasAutomationSnapshot: automationWatch !== null, error, automationError }),
+    [automationError, automationWatch, error, lastLoadedAt]
   );
 
   const loadAutomationWatch = useCallback(async () => {
@@ -165,142 +60,47 @@ export default function FeedPage() {
     }
   }, []);
 
-  const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
-    if (mode === "refresh") setRefreshing(true);
+  const load = useCallback(
+    async (mode: "initial" | "refresh" = "initial") => {
+      if (mode === "refresh") setRefreshing(true);
 
-    const controlCenterPromise = fetch("/api/control-center", { cache: "no-store" });
-    const automationPromise = loadAutomationWatch();
+      const controlCenterPromise = fetch("/api/control-center", { cache: "no-store" });
+      const automationPromise = loadAutomationWatch();
 
-    try {
-      const response = await controlCenterPromise;
-      if (!response.ok) throw new Error("Control center data is unavailable right now.");
-      const data = (await response.json()) as ControlCenterData;
-      setControlCenter(data);
-      setError(null);
-      setLastLoadedAt(Date.now());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Control center data is unavailable right now.");
-    } finally {
-      await automationPromise;
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [loadAutomationWatch]);
+      try {
+        const response = await controlCenterPromise;
+        if (!response.ok) throw new Error("Control center data is unavailable right now.");
+        const data = (await response.json()) as ControlCenterData;
+        setControlCenter(data);
+        setError(null);
+        setLastLoadedAt(Date.now());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Control center data is unavailable right now.");
+      } finally {
+        await automationPromise;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [loadAutomationWatch]
+  );
 
-  const quickActions = useMemo(() => {
-    const actions: QuickAction[] = [];
+  const quickActions = useMemo<QuickAction[]>(() => {
+    const handlers: Partial<Record<string, () => void>> = {
+      "refresh-control-center": () => void load("refresh"),
+      "automation-refresh": () => void loadAutomationWatch(),
+    };
 
-    if (error) {
-      actions.push({
-        id: "refresh-control-center",
-        label: "Wake the dashboard",
-        title: "Refresh Annie's read",
-        detail: "Mission Control hit a rough patch. Give it another pass.",
-        href: "#overview",
-        tone: "warning",
-        kind: "button",
-        onSelect: () => void load("refresh"),
-      });
-    } else if (controlCenter.taskTracker.summary.attention > 0) {
-      actions.push({
-        id: "task-attention",
-        label: "Needs attention",
-        title: `${controlCenter.taskTracker.summary.attention} task${controlCenter.taskTracker.summary.attention === 1 ? "" : "s"} need a decision`,
-        detail: "Jump to the task runway before stale work piles up.",
-        href: "#task-runway",
-        tone: "danger",
-        kind: "link",
-      });
-    } else if (liveWork.length > 0) {
-      actions.push({
-        id: "live-thread",
-        label: "Live now",
-        title: liveWork[0]?.title || "A live thread is moving",
-        detail: "Open chat or scan the current work panel to steer Annie.",
-        href: "/chat",
-        tone: "success",
-        kind: "link",
-      });
-    }
-
-    if (automationError) {
-      actions.push({
-        id: "automation-refresh",
-        label: "Automation watch",
-        title: "Refresh recent run health",
-        detail: "Automation signals went fuzzy. Reload the watch panel.",
-        href: "#automation-watch",
-        tone: "warning",
-        kind: "button",
-        onSelect: () => void loadAutomationWatch(),
-      });
-    } else if ((automationWatch?.summary.failing || 0) > 0) {
-      actions.push({
-        id: "automation-failing",
-        label: "Automation watch",
-        title: `${automationWatch?.summary.failing || 0} job${automationWatch?.summary.failing === 1 ? "" : "s"} are failing`,
-        detail: "Check the latest cron health before the next beat lands.",
-        href: "#automation-watch",
-        tone: "danger",
-        kind: "link",
-      });
-    } else if (controlCenter.agenda[0]) {
-      actions.push({
-        id: "next-beat",
-        label: "Next beat",
-        title: controlCenter.agenda[0].title,
-        detail: `${formatRelativeFuture(controlCenter.agenda[0].timestamp)} · ${controlCenter.agenda[0].detail}`,
-        href: "/calendar",
-        tone: "info",
-        kind: "link",
-      });
-    }
-
-    if (controlCenter.priorities[0]) {
-      actions.push({
-        id: "top-priority",
-        label: "Top priority",
-        title: controlCenter.priorities[0].text,
-        detail: `From ${controlCenter.priorities[0].group}. Keep Annie pointed here.`,
-        href: "#top-priorities",
-        tone: "info",
-        kind: "link",
-      });
-    } else {
-      actions.push({
-        id: "set-direction",
-        label: "Set direction",
-        title: "Backlog is quiet",
-        detail: "Open projects and give Annie the next valuable target.",
-        href: "/projects",
-        tone: "success",
-        kind: "link",
-      });
-    }
-
-    if (controlCenter.projects[0]) {
-      actions.push({
-        id: "project-pulse",
-        label: "Project pulse",
-        title: controlCenter.projects[0].name,
-        detail: controlCenter.projects[0].nextStep || controlCenter.projects[0].summary,
-        href: "#project-pulse",
-        tone: "info",
-        kind: "link",
-      });
-    }
-
-    actions.push({
-      id: "ask-annie",
-      label: "Annie help",
-      title: "Ask Annie for a steer",
-      detail: "Open chat for a plain-English rundown or next-step help.",
-      href: "/chat",
-      tone: "success",
-      kind: "link",
-    });
-
-    return actions.slice(0, 4);
+    return buildQuickActionPlans({
+      controlCenter,
+      automationWatch,
+      error,
+      automationError,
+      liveWork,
+    }).map((action) => ({
+      ...action,
+      onSelect: handlers[action.id],
+    }));
   }, [automationError, automationWatch, controlCenter, error, liveWork, load, loadAutomationWatch]);
 
   useEffect(() => {
@@ -348,9 +148,9 @@ export default function FeedPage() {
           </div>
 
           <div id="overview" className="mt-5 grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Priorities" value={loading ? "…" : error ? "—" : controlCenter.summary.openPriorities} />
-            <SummaryCard label="Active now" value={loading ? "…" : error ? "—" : controlCenter.summary.activeNow} />
-            <SummaryCard label="Up next" value={loading ? "…" : error ? "—" : controlCenter.summary.upcomingJobs} />
+            <SummaryCard label="Priorities" value={loading ? "…" : feedStatus.showBlockingControlCenterError ? "—" : controlCenter.summary.openPriorities} />
+            <SummaryCard label="Active now" value={loading ? "…" : feedStatus.showBlockingControlCenterError ? "—" : controlCenter.summary.activeNow} />
+            <SummaryCard label="Up next" value={loading ? "…" : feedStatus.showBlockingControlCenterError ? "—" : controlCenter.summary.upcomingJobs} />
           </div>
 
           <div className="mt-4">
@@ -370,10 +170,21 @@ export default function FeedPage() {
             </div>
           ) : null}
 
-          {error ? (
+          {feedStatus.showBlockingControlCenterError ? (
             <div className="mt-5 rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-4 text-sm text-yellow-100">{error}</div>
           ) : (
             <>
+              {feedStatus.staleSignals.length ? (
+                <div className="mt-5 rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-4 text-sm text-yellow-100">
+                  <p className="font-medium text-white">Annie is holding a steady snapshot.</p>
+                  <ul className="mt-2 space-y-1 text-yellow-50/90">
+                    {feedStatus.staleSignals.map((signal) => (
+                      <li key={signal}>• {signal}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <div className="mt-5 rounded-3xl border border-[#2A2A3E] bg-[linear-gradient(135deg,rgba(96,165,250,0.14),rgba(167,139,250,0.14))] p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-white/45">Focus</p>
                 <p className="mt-2 text-lg font-semibold text-white">{controlCenter.focus.headline}</p>
@@ -428,20 +239,14 @@ export default function FeedPage() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel id="top-priorities" title="Top priorities">
-              {error ? (
+              {feedStatus.showBlockingControlCenterError ? (
                 <StatePanel
                   title="Priority read is unavailable"
-                  detail={error}
+                  detail={feedStatus.blockingControlCenterError || "Control center data is unavailable right now."}
                   tone="warning"
-                  action={(
-                    <button
-                      type="button"
-                      onClick={() => void load("refresh")}
-                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
-                    >
-                      Refresh priorities
-                    </button>
-                  )}
+                  action={
+                    <RefreshButton onClick={() => void load("refresh")}>Refresh priorities</RefreshButton>
+                  }
                 />
               ) : controlCenter.priorities.length ? (
                 <div className="space-y-3">
@@ -463,26 +268,14 @@ export default function FeedPage() {
             <Panel
               id="current-work"
               title="Current work"
-              headerRight={
-                controlCenter.activeWork.length ? (
-                  <span className="text-xs text-white/40">{liveWork.length} live · {recentWork.length} recent</span>
-                ) : undefined
-              }
+              headerRight={controlCenter.activeWork.length ? <span className="text-xs text-white/40">{liveWork.length} live · {recentWork.length} recent</span> : undefined}
             >
-              {error ? (
+              {feedStatus.showBlockingControlCenterError ? (
                 <StatePanel
                   title="Live work is unavailable"
-                  detail={error}
+                  detail={feedStatus.blockingControlCenterError || "Control center data is unavailable right now."}
                   tone="warning"
-                  action={(
-                    <button
-                      type="button"
-                      onClick={() => void load("refresh")}
-                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
-                    >
-                      Refresh live work
-                    </button>
-                  )}
+                  action={<RefreshButton onClick={() => void load("refresh")}>Refresh live work</RefreshButton>}
                 />
               ) : controlCenter.activeWork.length ? (
                 <div className="space-y-4">
@@ -526,7 +319,10 @@ export default function FeedPage() {
               ) : sourcesByKey.get("tasks")?.status === "degraded" || sourcesByKey.get("sessions")?.status === "degraded" ? (
                 <StatePanel
                   title="Live work is partially unavailable"
-                  detail={[sourcesByKey.get("tasks")?.detail, sourcesByKey.get("sessions")?.detail].filter(Boolean).join(" · ") || "Mission Control couldn't fully confirm Annie's current work."}
+                  detail={
+                    [sourcesByKey.get("tasks")?.detail, sourcesByKey.get("sessions")?.detail].filter(Boolean).join(" · ") ||
+                    "Mission Control couldn't fully confirm Annie's current work."
+                  }
                   tone="warning"
                 />
               ) : (
@@ -567,20 +363,12 @@ export default function FeedPage() {
                 <div>
                   <SectionLabel label="Recent task flow" />
                   <div className="mt-2 space-y-3">
-                    {error ? (
+                    {feedStatus.showBlockingControlCenterError ? (
                       <StatePanel
                         title="Task runway is unavailable"
-                        detail={error}
+                        detail={feedStatus.blockingControlCenterError || "Control center data is unavailable right now."}
                         tone="warning"
-                        action={(
-                          <button
-                            type="button"
-                            onClick={() => void load("refresh")}
-                            className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
-                          >
-                            Refresh runway
-                          </button>
-                        )}
+                        action={<RefreshButton onClick={() => void load("refresh")}>Refresh runway</RefreshButton>}
                       />
                     ) : controlCenter.taskTracker.items.length ? (
                       controlCenter.taskTracker.items.map((item) => (
@@ -611,11 +399,7 @@ export default function FeedPage() {
               id="automation-watch"
               title="Automation watch"
               headerRight={
-                automationWatch ? (
-                  <span className="text-xs text-white/40">
-                    {automationWatch.summary.failing} failing · {automationWatch.summary.warning} warning
-                  </span>
-                ) : undefined
+                automationWatch ? <span className="text-xs text-white/40">{automationWatch.summary.failing} failing · {automationWatch.summary.warning} warning</span> : undefined
               }
             >
               <div className="space-y-4">
@@ -652,20 +436,12 @@ export default function FeedPage() {
                 <div>
                   <SectionLabel label="Recent run health" />
                   <div className="mt-2 space-y-3">
-                    {automationError ? (
+                    {feedStatus.blockingAutomationError ? (
                       <StatePanel
                         title="Automation watch is temporarily unavailable"
-                        detail={automationError}
+                        detail={feedStatus.blockingAutomationError}
                         tone="warning"
-                        action={(
-                          <button
-                            type="button"
-                            onClick={() => void loadAutomationWatch()}
-                            className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
-                          >
-                            Refresh automation watch
-                          </button>
-                        )}
+                        action={<RefreshButton onClick={() => void loadAutomationWatch()}>Refresh automation watch</RefreshButton>}
                       />
                     ) : automationWatch ? (
                       automationWatch.items.length ? (
@@ -702,25 +478,15 @@ export default function FeedPage() {
                   <p className="mt-1 text-sm text-white/70">{controlCenter.recommendation.note}</p>
                 </div>
 
-                {error ? (
+                {feedStatus.showBlockingControlCenterError ? (
                   <StatePanel
                     title="Project pulse is unavailable"
-                    detail={error}
+                    detail={feedStatus.blockingControlCenterError || "Control center data is unavailable right now."}
                     tone="warning"
-                    action={(
-                      <button
-                        type="button"
-                        onClick={() => void load("refresh")}
-                        className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
-                      >
-                        Refresh project pulse
-                      </button>
-                    )}
+                    action={<RefreshButton onClick={() => void load("refresh")}>Refresh project pulse</RefreshButton>}
                   />
                 ) : controlCenter.projects.length ? (
-                  controlCenter.projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
-                  ))
+                  controlCenter.projects.map((project) => <ProjectCard key={project.id} project={project} />)
                 ) : (
                   <EmptyPanel text="No tracked projects are surfacing yet." />
                 )}
@@ -733,250 +499,14 @@ export default function FeedPage() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number | string }) {
+function RefreshButton({ children, onClick }: { children: string; onClick: () => void }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.18em] text-white/35">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/80 hover:text-white"
+    >
+      {children}
+    </button>
   );
-}
-
-function SummaryMiniCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "running" | "queued" | "attention" | "done";
-}) {
-  const toneClass =
-    tone === "running"
-      ? "border-[#34D399]/25 bg-[#34D399]/10 text-[#CFFCE9]"
-      : tone === "queued"
-        ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-100"
-        : tone === "attention"
-          ? "border-red-400/30 bg-red-400/10 text-red-100"
-          : "border-[#60A5FA]/25 bg-[#60A5FA]/10 text-[#BFDBFE]";
-
-  return (
-    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-[0.16em] opacity-80">{label}</p>
-      <p className="mt-2 text-xl font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
-type QuickAction = {
-  id: string;
-  label: string;
-  title: string;
-  detail: string;
-  href: string;
-  tone: "info" | "success" | "warning" | "danger";
-  kind: "link" | "button";
-  onSelect?: () => void;
-};
-
-function Panel({
-  id,
-  title,
-  headerRight,
-  children,
-}: {
-  id?: string;
-  title: string;
-  headerRight?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section id={id} className="scroll-mt-24 rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        {headerRight}
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-function BriefCard({ label, title, detail }: { label: string; title: string; detail: string }) {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-[#0E1020] p-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">{label}</p>
-      <p className="mt-2 text-sm font-medium text-white">{title}</p>
-      <p className="mt-1 text-sm text-white/55">{detail}</p>
-    </div>
-  );
-}
-
-function QuickActionCard({ action }: { action: QuickAction }) {
-  const classes = `rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-white/20 ${quickActionTone(action.tone)}`;
-  const content = (
-    <>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-white/40">{action.label}</p>
-      <p className="mt-2 text-sm font-medium text-white">{action.title}</p>
-      <p className="mt-1 text-sm text-white/65">{action.detail}</p>
-      <p className="mt-3 text-xs font-medium text-white/75">{action.kind === "button" ? "Refresh now →" : "Open →"}</p>
-    </>
-  );
-
-  if (action.kind === "button") {
-    return (
-      <button type="button" onClick={action.onSelect} className={classes}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <Link href={action.href} className={classes}>
-      {content}
-    </Link>
-  );
-}
-
-function SectionLabel({ label }: { label: string }) {
-  return <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">{label}</p>;
-}
-
-function ItemCard({
-  eyebrow,
-  title,
-  detail,
-  status,
-  highlight,
-}: {
-  eyebrow: string;
-  title: string;
-  detail?: string;
-  status?: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className={`rounded-2xl border p-3 ${highlight ? "border-[#34D399]/20 bg-[linear-gradient(135deg,rgba(52,211,153,0.08),rgba(96,165,250,0.08))]" : "border-white/8 bg-[#0E1020]"}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">{eyebrow}</p>
-          <p className="mt-2 text-sm font-medium text-white">{title}</p>
-          {detail ? <p className="mt-1 text-sm text-white/60">{detail}</p> : null}
-        </div>
-        {status ? <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] capitalize ${statusTone(status)}`}>{status}</span> : null}
-      </div>
-    </div>
-  );
-}
-
-function SourceBadge({ label, status, detail }: { label: string; status: "ok" | "degraded"; detail: string }) {
-  return (
-    <div className={`rounded-full border px-3 py-1.5 text-xs ${status === "ok" ? "border-[#34D399]/25 bg-[#34D399]/10 text-[#CFFCE9]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-100"}`}>
-      <span className="font-medium text-white">{label}</span>
-      <span className="ml-2 opacity-80">{detail}</span>
-    </div>
-  );
-}
-
-function AttentionCard({ alert }: { alert: ControlCenterData["alerts"][number] }) {
-  return (
-    <div className={`rounded-2xl border p-3 ${attentionTone(alert.tone)}`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">Needs attention</p>
-      <p className="mt-2 text-sm font-medium text-white">{alert.title}</p>
-      <p className="mt-1 text-sm text-white/70">{alert.detail}</p>
-    </div>
-  );
-}
-
-function ProjectCard({
-  project,
-}: {
-  project: ControlCenterData["projects"][number];
-}) {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-[#0E1020] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium text-white">{project.name}</p>
-            {project.pinned ? <span className="rounded-full border border-[#60A5FA]/30 bg-[#60A5FA]/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[#93C5FD]">Pinned</span> : null}
-          </div>
-          <p className="mt-1 text-sm text-white/60">{project.nextStep || project.summary}</p>
-          <p className="mt-2 text-xs text-white/35">Updated {formatRelative(project.updatedAt)}</p>
-        </div>
-        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] capitalize ${projectStatusTone(project.status)}`}>{project.status}</span>
-      </div>
-      <div className="mt-3">
-        <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-white/35">
-          <span>Progress</span>
-          <span>{project.progress}%</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white/8">
-          <div className="h-full rounded-full bg-[#60A5FA]" style={{ width: `${project.progress}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyPanel({ text }: { text: string }) {
-  return <p className="rounded-2xl border border-dashed border-white/10 bg-[#0E1020] p-4 text-sm text-white/45">{text}</p>;
-}
-
-function formatRelative(timestamp: number) {
-  if (!timestamp) return "Unknown";
-  const diffMinutes = Math.max(Math.floor((Date.now() - timestamp) / 60_000), 0);
-  if (diffMinutes <= 1) return "just now";
-  if (diffMinutes < 60) return `${diffMinutes} min ago`;
-  const hours = Math.floor(diffMinutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatRelativeFuture(timestamp: number) {
-  if (!timestamp) return "Unknown";
-  const diffMinutes = Math.round((timestamp - Date.now()) / 60_000);
-  if (diffMinutes <= 1) return "due now";
-  if (diffMinutes < 60) return `in ${diffMinutes} min`;
-  const hours = Math.floor(diffMinutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `in ${days}d`;
-}
-
-function statusTone(status: string) {
-  const normalized = status.toLowerCase();
-  if (["running", "active", "in progress", "healthy", "success", "completed"].includes(normalized)) {
-    return "border-[#34D399]/30 bg-[#34D399]/10 text-[#6EE7B7]";
-  }
-  if (["queued", "pending", "recent", "warning", "skipped"].includes(normalized)) {
-    return "border-yellow-400/30 bg-yellow-400/10 text-yellow-100";
-  }
-  if (["failing", "failed", "error", "timeout"].includes(normalized)) {
-    return "border-red-400/30 bg-red-400/10 text-red-200";
-  }
-  if (["idle"].includes(normalized)) {
-    return "border-[#60A5FA]/30 bg-[#60A5FA]/10 text-[#93C5FD]";
-  }
-  return "border-white/10 bg-white/5 text-white/70";
-}
-
-function projectStatusTone(status: ControlCenterData["projects"][number]["status"]) {
-  if (status === "blocked") return "border-red-400/30 bg-red-400/10 text-red-200";
-  if (status === "active") return "border-[#34D399]/30 bg-[#34D399]/10 text-[#6EE7B7]";
-  if (status === "planned") return "border-[#60A5FA]/30 bg-[#60A5FA]/10 text-[#93C5FD]";
-  return "border-white/10 bg-white/5 text-white/70";
-}
-
-function attentionTone(tone: ControlCenterData["alerts"][number]["tone"]) {
-  if (tone === "warning") return "border-yellow-400/30 bg-yellow-400/10";
-  if (tone === "focus") return "border-[#60A5FA]/25 bg-[#60A5FA]/10";
-  return "border-white/10 bg-black/20";
-}
-
-function quickActionTone(tone: QuickAction["tone"]) {
-  if (tone === "danger") return "border-red-400/30 bg-red-400/10";
-  if (tone === "warning") return "border-yellow-400/30 bg-yellow-400/10";
-  if (tone === "success") return "border-[#34D399]/25 bg-[#34D399]/10";
-  return "border-[#60A5FA]/25 bg-[#60A5FA]/10";
 }

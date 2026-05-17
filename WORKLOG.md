@@ -11,6 +11,13 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-17
+
+- Hardened the feed against refresh hiccups so Mission Control now keeps showing the last good control-center and automation-watch snapshot instead of blanking into misleading empty/error states; Annie now says clearly when the view is stale but still usable.
+- Pulled the feed page’s growing client logic into a dedicated `feed-view-model` module plus shared feed card components, shrinking the page back toward orchestration instead of mixing UI, stale-state policy, and quick-action decisions in one 1,000-line file.
+- Added focused `feed-view-model` coverage for stale snapshot handling, first-load blocking errors, live-vs-recent work splitting, and quick-action prioritization so the feed’s operator UX rules are now testable without rendering the whole page.
+- Re-verified the weekly refactor pass with clean `npm test`, targeted `npx eslint ... --max-warnings=0`, and `npm run build` checks, restarted the dashboard service, and confirmed `/health` plus `/feed` returned cleanly.
+
 ## 2026-05-16
 
 - Hardened the feed’s degraded-state UX so panel-level failures now say what actually went fuzzy instead of quietly pretending everything is empty; Mission Control now keeps Annie’s tone while offering direct refresh actions for priorities, live work, task runway, automation watch, schedule, and project pulse.
