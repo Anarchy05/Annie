@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-18
+
+- Finished the feed/control-center empty-state pass so source health now distinguishes quiet-but-healthy reads from truly degraded ones; Mission Control stops treating “nothing happening” as a warning and shows targeted schedule/task refresh states where data actually failed.
+- Re-verified the reliability pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
+
 ## 2026-05-17
 
 - Hardened the feed against refresh hiccups so Mission Control now keeps showing the last good control-center and automation-watch snapshot instead of blanking into misleading empty/error states; Annie now says clearly when the view is stale but still usable.

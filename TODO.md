@@ -68,7 +68,7 @@ Core goals:
 - [x] Add a real tasks/work tracker layer instead of just raw sessions and cron jobs.
 - [x] Add a clearer “what Annie is busy with now” surface.
 - [x] Add a daily inbox/agenda style summary view.
-- [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
+- [x] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable. Feed panels now distinguish truly empty reads from degraded sources, and the dashboard keeps actionable refresh/degraded messaging instead of collapsing into misleading blanks.
 - [ ] Add a compact mobile-friendly command center view.
 - [x] Add drag-and-drop uploads to the chat page.
 - [x] Add a conversation sidebar or archive browser for old web-chat sessions. Added a chat archive browser that lists saved conversations, shows previews/message counts, and lets Annie's web chat open old transcripts in a read-only view.
@@ -77,7 +77,7 @@ Core goals:
 
 - [ ] Harden all dashboard API routes against missing/partial local OpenClaw state.
 - [x] Let the feed and control-center panels degrade independently when one live API is unavailable.
-- [ ] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable.
+- [x] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable. The remaining feed/control-center gaps now treat quiet sources as empty instead of degraded, while preserving targeted warning states when real reads fail.
 - [x] Reduce dashboard service restarts and document stable service management. The restart helper now cleanly restarts an existing transient unit instead of colliding with it.
 ### P1 - Performance
 

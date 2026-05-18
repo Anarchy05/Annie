@@ -16,7 +16,6 @@ import {
   parsePriorityItems,
   type ControlCenterData,
   type Session,
-  type SessionsListResponse,
   type SourceHealth,
   type TasksListResponse,
   type TimelineItem,
@@ -166,12 +165,24 @@ export async function getSessions() {
       return {
         count: sessions.length,
         sessions,
-      } satisfies SessionsListResponse;
-    } catch {
+        source: {
+          key: "sessions",
+          label: "Sessions",
+          status: sessions.length ? "ok" : "empty",
+          detail: sessions.length ? `${sessions.length} recent session${sessions.length === 1 ? "" : "s"} indexed` : "No recent sessions are indexed yet",
+        } satisfies SourceHealth,
+      };
+    } catch (error) {
       return {
         count: 0,
         sessions: [],
-      } satisfies SessionsListResponse;
+        source: {
+          key: "sessions",
+          label: "Sessions",
+          status: "degraded",
+          detail: error instanceof Error ? error.message : "Session index unavailable right now",
+        } satisfies SourceHealth,
+      };
     }
   });
 }
@@ -417,9 +428,24 @@ async function getTasks() {
       return {
         count: typeof response.count === "number" ? response.count : tasks.length,
         tasks,
-      } satisfies TasksListResponse;
-    } catch {
-      return { count: 0, tasks: [] } satisfies TasksListResponse;
+        source: {
+          key: "tasks",
+          label: "Tasks",
+          status: tasks.length ? "ok" : "empty",
+          detail: tasks.length ? `${tasks.length} OpenClaw task${tasks.length === 1 ? "" : "s"} visible` : "No live OpenClaw tasks right now",
+        } satisfies SourceHealth,
+      };
+    } catch (error) {
+      return {
+        count: 0,
+        tasks: [],
+        source: {
+          key: "tasks",
+          label: "Tasks",
+          status: "degraded",
+          detail: error instanceof Error ? error.message : "Task runway unavailable right now",
+        } satisfies SourceHealth,
+      };
     }
   });
 }
@@ -428,9 +454,26 @@ async function getPriorityItems() {
   return runtimeCache.withCache("todo-priorities", 15_000, async () => {
     try {
       const raw = await fs.readFile(TODO_FILE, "utf8");
-      return parsePriorityItems(raw);
-    } catch {
-      return [] as PriorityItem[];
+      const items = parsePriorityItems(raw);
+      return {
+        items,
+        source: {
+          key: "todo",
+          label: "Backlog",
+          status: items.length ? "ok" : "empty",
+          detail: items.length ? `${items.length} open priorit${items.length === 1 ? "y" : "ies"} parsed` : "Backlog looks clear right now",
+        } satisfies SourceHealth,
+      };
+    } catch (error) {
+      return {
+        items: [] as PriorityItem[],
+        source: {
+          key: "todo",
+          label: "Backlog",
+          status: "degraded",
+          detail: error instanceof Error ? error.message : "TODO priorities unavailable right now",
+        } satisfies SourceHealth,
+      };
     }
   });
 }
@@ -475,7 +518,7 @@ export {
 
 export async function getControlCenterData() {
   return runtimeCache.withCache("control-center", 10_000, async () => {
-    const [priorities, tasks, sessions, jobs, projects] = await Promise.all([
+    const [priorityState, tasks, sessions, jobs, projects] = await Promise.all([
       getPriorityItems(),
       getTasks(),
       getSessions(),
@@ -483,35 +526,41 @@ export async function getControlCenterData() {
       getProjectPulse(),
     ]);
 
+    const priorities = priorityState.items;
     const activeWork = buildActiveWork(tasks.tasks, sessions.sessions);
     const taskTracker = buildTaskTracker(tasks.tasks);
     const agenda = buildAgenda(jobs.jobs);
 
     const sources: SourceHealth[] = [
-      {
-        key: "todo",
-        label: "Backlog",
-        status: priorities.length ? "ok" : "degraded",
-        detail: priorities.length ? `${priorities.length} open priorities parsed` : "No TODO priorities found",
-      },
-      {
-        key: "tasks",
-        label: "Tasks",
-        status: tasks.count || activeWork.some((item) => item.source === "task") ? "ok" : "degraded",
-        detail: tasks.count ? `${tasks.count} OpenClaw tasks visible` : "No task entries returned",
-      },
-      {
-        key: "sessions",
-        label: "Sessions",
-        status: sessions.count ? "ok" : "degraded",
-        detail: sessions.count ? `${sessions.count} recent sessions indexed` : "Session index unavailable or empty",
-      },
-      {
-        key: "cron",
-        label: "Cron",
-        status: jobs.jobs.length ? "ok" : "degraded",
-        detail: jobs.jobs.length ? `${jobs.jobs.length} scheduled jobs loaded` : "No cron jobs found",
-      },
+      priorityState.source,
+      tasks.source.status === "empty" && activeWork.some((item) => item.source === "task")
+        ? {
+            ...tasks.source,
+            status: "ok",
+            detail: `${activeWork.filter((item) => item.source === "task").length} active task signal${activeWork.filter((item) => item.source === "task").length === 1 ? "" : "s"} surfaced from recent work`,
+          }
+        : tasks.source,
+      sessions.source,
+      jobs.meta.status === "degraded"
+        ? {
+            key: "cron",
+            label: "Cron",
+            status: "degraded",
+            detail: jobs.meta.detail,
+          }
+        : jobs.jobs.length
+          ? {
+              key: "cron",
+              label: "Cron",
+              status: "ok",
+              detail: `${jobs.jobs.length} scheduled job${jobs.jobs.length === 1 ? "" : "s"} loaded`,
+            }
+          : {
+              key: "cron",
+              label: "Cron",
+              status: "empty",
+              detail: "No cron jobs are scheduled right now",
+            },
     ];
 
     return {

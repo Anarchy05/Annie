@@ -22,7 +22,7 @@ export type SessionsListResponse = {
 export type SourceHealth = {
   key: "todo" | "tasks" | "sessions" | "cron";
   label: string;
-  status: "ok" | "degraded";
+  status: "ok" | "empty" | "degraded";
   detail: string;
 };
 

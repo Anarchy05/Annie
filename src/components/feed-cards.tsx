@@ -132,9 +132,16 @@ export function ItemCard({
   );
 }
 
-export function SourceBadge({ label, status, detail }: { label: string; status: "ok" | "degraded"; detail: string }) {
+export function SourceBadge({ label, status, detail }: { label: string; status: "ok" | "empty" | "degraded"; detail: string }) {
+  const toneClass =
+    status === "ok"
+      ? "border-[#34D399]/25 bg-[#34D399]/10 text-[#CFFCE9]"
+      : status === "empty"
+        ? "border-[#60A5FA]/25 bg-[#60A5FA]/10 text-[#BFDBFE]"
+        : "border-yellow-400/30 bg-yellow-400/10 text-yellow-100";
+
   return (
-    <div className={`rounded-full border px-3 py-1.5 text-xs ${status === "ok" ? "border-[#34D399]/25 bg-[#34D399]/10 text-[#CFFCE9]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-100"}`}>
+    <div className={`rounded-full border px-3 py-1.5 text-xs ${toneClass}`}>
       <span className="font-medium text-white">{label}</span>
       <span className="ml-2 opacity-80">{detail}</span>
     </div>

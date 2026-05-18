@@ -62,7 +62,7 @@ export type ControlCenterData = {
     sources: Array<{
       key: "todo" | "tasks" | "sessions" | "cron";
       label: string;
-      status: "ok" | "degraded";
+      status: "ok" | "empty" | "degraded";
       detail: string;
     }>;
   };

@@ -334,10 +334,12 @@ export default function FeedPage() {
               id="task-runway"
               title="Task runway"
               headerRight={
-                <span className="text-xs text-white/40">
-                  {controlCenter.taskTracker.summary.running} live · {controlCenter.taskTracker.summary.queued} queued · {controlCenter.taskTracker.summary.attention} attention
-                  {controlCenter.taskTracker.summary.staleAttention ? ` · ${controlCenter.taskTracker.summary.staleAttention} older` : ""}
-                </span>
+                feedStatus.showBlockingControlCenterError ? undefined : (
+                  <span className="text-xs text-white/40">
+                    {controlCenter.taskTracker.summary.running} live · {controlCenter.taskTracker.summary.queued} queued · {controlCenter.taskTracker.summary.attention} attention
+                    {controlCenter.taskTracker.summary.staleAttention ? ` · ${controlCenter.taskTracker.summary.staleAttention} older` : ""}
+                  </span>
+                )
               }
             >
               <div className="space-y-4">
@@ -412,7 +414,14 @@ export default function FeedPage() {
                 <div>
                   <SectionLabel label="Next up" />
                   <div className="mt-2 space-y-3">
-                    {controlCenter.agenda.length ? (
+                    {feedStatus.showBlockingControlCenterError ? (
+                      <StatePanel
+                        title="Schedule read is unavailable"
+                        detail={feedStatus.blockingControlCenterError || "Control center data is unavailable right now."}
+                        tone="warning"
+                        action={<RefreshButton onClick={() => void load("refresh")}>Refresh schedule</RefreshButton>}
+                      />
+                    ) : controlCenter.agenda.length ? (
                       controlCenter.agenda.slice(0, 3).map((item) => (
                         <ItemCard
                           key={item.id}

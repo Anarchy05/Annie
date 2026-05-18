@@ -168,6 +168,21 @@ test("buildAttentionItems surfaces blocked work, degraded sources, and upcoming 
   assert.equal(items[3]?.id, "next-job-job-1");
 });
 
+test("buildAttentionItems does not treat quiet sources as degraded", () => {
+  const now = Date.UTC(2026, 4, 3, 0, 0, 0);
+  const items = buildAttentionItems(
+    [],
+    [{ id: "p0", group: "P0", text: "Top priority" }],
+    [],
+    [],
+    [{ key: "tasks", label: "Tasks", status: "empty", detail: "No live OpenClaw tasks right now" }],
+    now
+  );
+
+  assert.ok(!items.some((item) => item.id === "degraded-sources"));
+  assert.equal(items[0]?.id, "no-active-work");
+});
+
 test("buildRecommendation prefers blocked projects, then active projects, then priorities", () => {
   const blocked = buildRecommendation(
     [{ id: "a", name: "A", status: "blocked", progress: 10, summary: "s", nextStep: "n", updatedAt: 1 }],
