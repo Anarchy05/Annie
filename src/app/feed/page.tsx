@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AttentionCard,
@@ -36,9 +36,11 @@ export default function FeedPage() {
   const [automationWatch, setAutomationWatch] = useState<AutomationWatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [automationRefreshing, setAutomationRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [automationError, setAutomationError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const latestLoadId = useRef(0);
 
   const liveWork = useMemo(() => buildLiveWorkItems(controlCenter), [controlCenter]);
   const recentWork = useMemo(() => buildRecentWorkItems(controlCenter), [controlCenter]);
@@ -48,41 +50,55 @@ export default function FeedPage() {
     [automationError, automationWatch, error, lastLoadedAt]
   );
 
-  const loadAutomationWatch = useCallback(async () => {
+  const loadAutomationWatch = useCallback(async (loadId?: number) => {
+    setAutomationRefreshing(true);
+
     try {
       const response = await fetch("/api/automation-watch", { cache: "no-store" });
       if (!response.ok) throw new Error("Automation watch is unavailable right now.");
       const data = (await response.json()) as AutomationWatchData;
+      if (loadId && loadId !== latestLoadId.current) return;
       setAutomationWatch(data);
       setAutomationError(null);
     } catch (err) {
+      if (loadId && loadId !== latestLoadId.current) return;
       setAutomationError(err instanceof Error ? err.message : "Automation watch is unavailable right now.");
+    } finally {
+      if (!loadId || loadId === latestLoadId.current) {
+        setAutomationRefreshing(false);
+      }
     }
   }, []);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
-      if (mode === "refresh") setRefreshing(true);
+      const loadId = latestLoadId.current + 1;
+      latestLoadId.current = loadId;
 
-      const controlCenterPromise = fetch("/api/control-center", { cache: "no-store" });
-      const automationPromise = loadAutomationWatch();
+      if (mode === "refresh") setRefreshing(true);
+      if (mode === "initial" && lastLoadedAt === null) setLoading(true);
+
+      void loadAutomationWatch(loadId);
 
       try {
-        const response = await controlCenterPromise;
+        const response = await fetch("/api/control-center", { cache: "no-store" });
         if (!response.ok) throw new Error("Control center data is unavailable right now.");
         const data = (await response.json()) as ControlCenterData;
+        if (loadId !== latestLoadId.current) return;
         setControlCenter(data);
         setError(null);
         setLastLoadedAt(Date.now());
       } catch (err) {
+        if (loadId !== latestLoadId.current) return;
         setError(err instanceof Error ? err.message : "Control center data is unavailable right now.");
       } finally {
-        await automationPromise;
-        setLoading(false);
-        setRefreshing(false);
+        if (loadId === latestLoadId.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [loadAutomationWatch]
+    [lastLoadedAt, loadAutomationWatch]
   );
 
   const quickActions = useMemo<QuickAction[]>(() => {
@@ -142,7 +158,7 @@ export default function FeedPage() {
                 onClick={() => void load("refresh")}
                 className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-white/70 hover:text-white"
               >
-                {refreshing ? "Refreshing…" : "Refresh"}
+                {refreshing || automationRefreshing ? "Refreshing…" : "Refresh"}
               </button>
             </div>
           </div>

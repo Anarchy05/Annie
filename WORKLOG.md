@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-19
+
+- Fixed a real feed startup/perf bug: Mission Control no longer waits for the slower automation-watch request before clearing the main dashboard skeleton, so priorities/current work render as soon as control-center data is ready while automation keeps loading independently.
+- Hardened the feed refresh loop against overlapping polls/manual refreshes so older responses stop racing in and overwriting fresher dashboard state.
+
 ## 2026-05-18
 
 - Finished the feed/control-center empty-state pass so source health now distinguishes quiet-but-healthy reads from truly degraded ones; Mission Control stops treating “nothing happening” as a warning and shows targeted schedule/task refresh states where data actually failed.
