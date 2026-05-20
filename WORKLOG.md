@@ -13,6 +13,7 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-19
 
+- Added a compact mobile command dock to the feed so Mission Control now stays useful on a phone with one-tap jumps into priorities, live work, task runway, chat, and the next automation beat without hunting through the whole page.
 - Fixed a real feed startup/perf bug: Mission Control no longer waits for the slower automation-watch request before clearing the main dashboard skeleton, so priorities/current work render as soon as control-center data is ready while automation keeps loading independently.
 - Hardened the feed refresh loop against overlapping polls/manual refreshes so older responses stop racing in and overwriting fresher dashboard state.
 

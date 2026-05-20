@@ -8,6 +8,16 @@ export type QuickAction = QuickActionPlan & {
   onSelect?: () => void;
 };
 
+export type MobileCommand = {
+  id: string;
+  label: string;
+  meta: string;
+  tone: "info" | "success" | "warning" | "danger";
+  kind: "link" | "button";
+  href: string;
+  onSelect?: () => void;
+};
+
 export function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
@@ -187,6 +197,40 @@ export function ProjectCard({ project }: { project: ControlCenterData["projects"
 
 export function EmptyPanel({ text }: { text: string }) {
   return <p className="rounded-2xl border border-dashed border-white/10 bg-[#0E1020] p-4 text-sm text-white/45">{text}</p>;
+}
+
+export function MobileCommandDock({ commands }: { commands: MobileCommand[] }) {
+  return (
+    <div className="sm:hidden">
+      <div className="fixed inset-x-4 bottom-4 z-30 rounded-[1.75rem] border border-white/10 bg-[#0A0A0F]/92 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+        <div className="grid grid-cols-5 gap-2">
+          {commands.map((command) => {
+            const classes = `min-w-0 rounded-2xl border px-2 py-2 text-left ${quickActionTone(command.tone)}`;
+            const content = (
+              <>
+                <p className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">{command.label}</p>
+                <p className="mt-1 truncate text-xs text-white">{command.meta}</p>
+              </>
+            );
+
+            if (command.kind === "button") {
+              return (
+                <button key={command.id} type="button" onClick={command.onSelect} className={classes}>
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <Link key={command.id} href={command.href} className={classes}>
+                {content}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function statusTone(status: string) {

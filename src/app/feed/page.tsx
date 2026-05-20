@@ -7,8 +7,10 @@ import {
   BriefCard,
   EmptyPanel,
   ItemCard,
+  MobileCommandDock,
   Panel,
   ProjectCard,
+  type MobileCommand,
   type QuickAction,
   QuickActionCard,
   SectionLabel,
@@ -119,6 +121,56 @@ export default function FeedPage() {
     }));
   }, [automationError, automationWatch, controlCenter, error, liveWork, load, loadAutomationWatch]);
 
+  const mobileCommands = useMemo<MobileCommand[]>(() => {
+    const nextBeat = controlCenter.agenda[0];
+    const attentionCount = controlCenter.taskTracker.summary.attention;
+    const liveCount = liveWork.length;
+
+    return [
+      {
+        id: "mobile-focus",
+        label: "Focus",
+        meta: controlCenter.priorities[0] ? `${Math.min(controlCenter.summary.openPriorities, 99)} open` : "set next",
+        tone: controlCenter.priorities[0] ? "info" : "success",
+        kind: "link",
+        href: controlCenter.priorities[0] ? "#top-priorities" : "/projects",
+      },
+      {
+        id: "mobile-work",
+        label: "Work",
+        meta: liveCount ? `${Math.min(liveCount, 99)} live` : recentWork.length ? `${Math.min(recentWork.length, 99)} recent` : "quiet",
+        tone: liveCount ? "success" : "info",
+        kind: "link",
+        href: "#current-work",
+      },
+      {
+        id: "mobile-runway",
+        label: "Runway",
+        meta: attentionCount ? `${Math.min(attentionCount, 99)} hot` : controlCenter.taskTracker.summary.queued ? `${Math.min(controlCenter.taskTracker.summary.queued, 99)} queued` : "steady",
+        tone: attentionCount ? "danger" : controlCenter.taskTracker.summary.queued ? "warning" : "success",
+        kind: "link",
+        href: "#task-runway",
+      },
+      {
+        id: "mobile-chat",
+        label: "Chat",
+        meta: liveCount ? "steer Annie" : "ask Annie",
+        tone: "success",
+        kind: "link",
+        href: "/chat",
+      },
+      {
+        id: "mobile-refresh",
+        label: nextBeat ? "Next beat" : "Refresh",
+        meta: nextBeat ? formatRelativeFuture(nextBeat.timestamp) : refreshing || automationRefreshing ? "working…" : "pull fresh",
+        tone: nextBeat ? "info" : "warning",
+        kind: nextBeat ? "link" : "button",
+        href: nextBeat ? "#automation-watch" : "#overview",
+        onSelect: nextBeat ? undefined : () => void load("refresh"),
+      },
+    ];
+  }, [automationRefreshing, controlCenter, liveWork, recentWork.length, refreshing, load]);
+
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
     const interval = window.setInterval(() => {
@@ -144,7 +196,7 @@ export default function FeedPage() {
 
   return (
     <PageShell>
-      <div className="space-y-5">
+      <div className="space-y-5 pb-28 sm:pb-0">
         <section className="rounded-3xl border border-[#2A2A3E] bg-[#1A1A2E]/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -519,6 +571,7 @@ export default function FeedPage() {
             </Panel>
           </div>
         )}
+        <MobileCommandDock commands={mobileCommands} />
       </div>
     </PageShell>
   );

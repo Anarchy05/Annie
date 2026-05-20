@@ -69,7 +69,7 @@ Core goals:
 - [x] Add a clearer “what Annie is busy with now” surface.
 - [x] Add a daily inbox/agenda style summary view.
 - [x] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable. Feed panels now distinguish truly empty reads from degraded sources, and the dashboard keeps actionable refresh/degraded messaging instead of collapsing into misleading blanks.
-- [ ] Add a compact mobile-friendly command center view.
+- [x] Add a compact mobile-friendly command center view. Added a sticky mobile command dock on the feed with one-tap jumps into priorities, live work, task runway, chat, and the next beat so Mission Control stays steerable from a phone.
 - [x] Add drag-and-drop uploads to the chat page.
 - [x] Add a conversation sidebar or archive browser for old web-chat sessions. Added a chat archive browser that lists saved conversations, shows previews/message counts, and lets Annie's web chat open old transcripts in a read-only view.
 
