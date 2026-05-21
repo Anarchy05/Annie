@@ -449,6 +449,7 @@ export default function FeedPage() {
                           detail={item.detail}
                           status={item.status}
                           highlight={item.statusTone === "running" || item.statusTone === "attention"}
+                          badgeLabel={item.repeatCount && item.repeatCount > 1 ? `${item.repeatCount}x` : undefined}
                         />
                       ))
                     ) : sourcesByKey.get("tasks")?.status === "degraded" ? (

@@ -120,3 +120,4 @@ Core goals:
 - [x] Added a dedicated Projects page and API-backed tracker for multi-repo workspace status, progress, and next steps.
 - [x] Improved chat markdown rendering so Annie now displays headings, blockquotes, tables, inline code, and clickable links more cleanly.
 - [x] Tightened the task-runway signal so older failed tasks no longer inflate Annie's live attention count, while still surfacing a separate older-failure indicator when useful.
+- [x] Grouped repeated recent task failures/completions into cleaner runway cards with repeat counts so one noisy automation no longer floods Mission Control.

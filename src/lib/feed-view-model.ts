@@ -25,6 +25,7 @@ export type ControlCenterData = {
       status: string;
       statusTone: "running" | "queued" | "attention" | "done" | "other";
       updatedAt: number;
+      repeatCount?: number;
     }>;
   };
   agenda: Array<{ id: string; title: string; detail: string; timestamp: number }>;

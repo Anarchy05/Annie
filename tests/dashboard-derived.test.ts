@@ -126,8 +126,62 @@ test("buildTaskTracker summarizes live task flow while tucking older failures in
   assert.equal(tracker.items[0]?.title, "Mission Control daily improvement");
   assert.equal(tracker.items[1]?.title, "Sub-agent handoff");
   assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI. Retry later.");
+  assert.equal(tracker.items[1]?.repeatCount, 1);
   assert.ok(!tracker.items.some((item) => item.title === "Old failure"));
   assert.ok(!tracker.items.some((item) => item.title === "Old completion"));
+});
+
+test("buildTaskTracker groups repeated recent failures and completions without hiding the real counts", () => {
+  const now = Date.UTC(2026, 4, 20, 0, 0, 0);
+  const tracker = buildTaskTracker(
+    [
+      {
+        taskId: "failed-1",
+        label: "BoldIOT hourly site improvements",
+        status: "failed",
+        terminalSummary: "Agent couldn't generate a response.",
+        updatedAtMs: now - 5 * 60_000,
+      },
+      {
+        taskId: "failed-2",
+        label: "BoldIOT hourly site improvements",
+        status: "error",
+        terminalSummary: "Agent couldn't generate a response.",
+        updatedAtMs: now - 15 * 60_000,
+      },
+      {
+        taskId: "failed-3",
+        label: "BoldIOT hourly site improvements",
+        status: "failed",
+        terminalSummary: "Agent couldn't generate a response.",
+        updatedAtMs: now - 25 * 60_000,
+      },
+      {
+        taskId: "done-1",
+        label: "Healthcheck",
+        status: "done",
+        updatedAtMs: now - 30 * 60_000,
+      },
+      {
+        taskId: "done-2",
+        label: "Healthcheck",
+        status: "success",
+        updatedAtMs: now - 40 * 60_000,
+      },
+    ],
+    now
+  );
+
+  assert.equal(tracker.summary.attention, 3);
+  assert.equal(tracker.summary.completed, 2);
+  assert.match(tracker.note, /2 similar recent failures/i);
+  assert.equal(tracker.items[0]?.title, "BoldIOT hourly site improvements");
+  assert.equal(tracker.items[0]?.repeatCount, 3);
+  assert.match(tracker.items[0]?.detail || "", /2 similar recent failures/i);
+  assert.equal(tracker.items[1]?.title, "Healthcheck");
+  assert.equal(tracker.items[1]?.repeatCount, 2);
+  assert.match(tracker.items[1]?.detail || "", /1 similar recent completions/i);
+  assert.equal(tracker.items.length, 2);
 });
 
 test("buildAgenda sorts enabled jobs by next run time", () => {

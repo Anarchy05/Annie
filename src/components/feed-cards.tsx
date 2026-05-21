@@ -121,12 +121,14 @@ export function ItemCard({
   detail,
   status,
   highlight,
+  badgeLabel,
 }: {
   eyebrow: string;
   title: string;
   detail?: string;
   status?: string;
   highlight?: boolean;
+  badgeLabel?: string;
 }) {
   return (
     <div className={`rounded-2xl border p-3 ${highlight ? "border-[#34D399]/20 bg-[linear-gradient(135deg,rgba(52,211,153,0.08),rgba(96,165,250,0.08))]" : "border-white/8 bg-[#0E1020]"}`}>
@@ -136,7 +138,10 @@ export function ItemCard({
           <p className="mt-2 text-sm font-medium text-white">{title}</p>
           {detail ? <p className="mt-1 text-sm text-white/60">{detail}</p> : null}
         </div>
-        {status ? <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] capitalize ${statusTone(status)}`}>{status}</span> : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {badgeLabel ? <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/70">{badgeLabel}</span> : null}
+          {status ? <span className={`rounded-full border px-2.5 py-1 text-[11px] capitalize ${statusTone(status)}`}>{status}</span> : null}
+        </div>
       </div>
     </div>
   );

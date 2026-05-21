@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-21
+
+- Tightened the feed's task-runway signal so repeated recent failures/completions now collapse into grouped issue cards with repeat counts instead of flooding Mission Control with near-identical rows; Annie still keeps the true attention/done totals, but the runway reads much more clearly when one automation is failing over and over.
+- Re-verified the task-noise pass with clean `npm test`, targeted `npx eslint src tests --max-warnings=0`, and `npm run build` checks, then restarted the dashboard service and confirmed `/health` plus `/api/control-center` returned cleanly.
+
 ## 2026-05-19
 
 - Added a compact mobile command dock to the feed so Mission Control now stays useful on a phone with one-tap jumps into priorities, live work, task runway, chat, and the next automation beat without hunting through the whole page.

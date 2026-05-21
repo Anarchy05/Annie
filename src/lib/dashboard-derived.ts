@@ -97,6 +97,7 @@ export type TaskTrackerItem = {
   status: string;
   statusTone: "running" | "queued" | "attention" | "done" | "other";
   updatedAt: number;
+  repeatCount?: number;
 };
 
 export type TaskTrackerData = {
@@ -416,6 +417,54 @@ export function buildTaskTracker(tasks: TaskEntry[], now = Date.now()): TaskTrac
     return !timestamp || now - timestamp <= RECENT_COMPLETION_WINDOW_MS;
   });
 
+  const itemCandidates = [...running, ...attention, ...queued, ...completed].sort((a, b) => {
+    const priority = { running: 0, attention: 1, queued: 2, done: 3, other: 4 } as const;
+    const delta = priority[getTaskStatusTone(a.status)] - priority[getTaskStatusTone(b.status)];
+    if (delta !== 0) return delta;
+    return getTaskTimestamp(b) - getTaskTimestamp(a);
+  });
+
+  const groupedItems: TaskTrackerItem[] = [];
+
+  for (const task of itemCandidates) {
+    const title = getTaskTitle(task);
+    const detail = getTaskDetail(task);
+    const statusTone = getTaskStatusTone(task.status);
+    const repeatable = statusTone === "attention" || statusTone === "done";
+
+    if (repeatable) {
+      const existing = groupedItems.find((item) => item.statusTone === statusTone && item.title === title && item.detail === detail);
+      if (existing) {
+        existing.repeatCount = (existing.repeatCount || 1) + 1;
+        existing.updatedAt = Math.max(existing.updatedAt, getTaskTimestamp(task));
+        continue;
+      }
+    }
+
+    groupedItems.push({
+      id: `task-tracker-${task.taskId || task.runId || task.sessionKey || title}`,
+      title,
+      detail,
+      status: normalizeTaskStatus(task.status),
+      statusTone,
+      updatedAt: getTaskTimestamp(task),
+      repeatCount: 1,
+    });
+  }
+
+  const items = groupedItems.slice(0, 6).map((item) => {
+    if ((item.repeatCount || 1) <= 1) return item;
+    const extraCount = (item.repeatCount || 1) - 1;
+    const suffix = item.statusTone === "done" ? "similar recent completions" : "similar recent failures";
+    return {
+      ...item,
+      detail: `${item.detail} · ${extraCount} ${suffix}`,
+    };
+  });
+
+  const topAttention = items.find((item) => item.statusTone === "attention");
+  const topCompletion = items.find((item) => item.statusTone === "done");
+
   const headline = running.length
     ? `Annie has ${running.length} live task${running.length === 1 ? "" : "s"} in motion.`
     : attention.length
@@ -428,32 +477,15 @@ export function buildTaskTracker(tasks: TaskEntry[], now = Date.now()): TaskTrac
 
   const note = running[0]
     ? getTaskTitle(running[0])
-    : attention[0]
-      ? getTaskDetail(attention[0])
+    : topAttention
+      ? topAttention.detail
       : queued[0]
         ? getTaskTitle(queued[0])
         : staleAttention
           ? `${staleAttention} older failed task signal${staleAttention === 1 ? " is" : "s are"} still on record, but Annie is keeping the live attention count focused on fresher work.`
-          : completed[0]
-            ? `Latest completion: ${getTaskTitle(completed[0])}`
+          : topCompletion
+            ? `Latest completion: ${topCompletion.title}${(topCompletion.repeatCount || 1) > 1 ? ` · ${topCompletion.repeatCount} similar recent wins` : ""}`
             : "OpenClaw is not surfacing a live task queue at the moment.";
-
-  const items = [...running, ...attention, ...queued, ...completed]
-    .sort((a, b) => {
-      const priority = { running: 0, attention: 1, queued: 2, done: 3, other: 4 } as const;
-      const delta = priority[getTaskStatusTone(a.status)] - priority[getTaskStatusTone(b.status)];
-      if (delta !== 0) return delta;
-      return getTaskTimestamp(b) - getTaskTimestamp(a);
-    })
-    .slice(0, 6)
-    .map((task) => ({
-      id: `task-tracker-${task.taskId || task.runId || task.sessionKey || getTaskTitle(task)}`,
-      title: getTaskTitle(task),
-      detail: getTaskDetail(task),
-      status: normalizeTaskStatus(task.status),
-      statusTone: getTaskStatusTone(task.status),
-      updatedAt: getTaskTimestamp(task),
-    }));
 
   return {
     headline,
