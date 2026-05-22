@@ -13,6 +13,8 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-22
 
+- Overrode Mission Control's transitive `postcss` copy to `^8.5.12` so Next no longer drags an audited vulnerable `8.4.31` subtree into the production dependency graph; `npm audit --omit=dev` is now clean again.
+- Re-verified the dependency maintenance pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service and confirmed `/health` returned live.
 - Added an "Annie's nudge" spotlight card to the top of the feed so Mission Control now surfaces one clearest next move immediately — refresh a fuzzy read, inspect hot tasks, check failing automation, steer a live thread, or jump straight to the top priority/project pulse — instead of making the operator scan several cards first.
 - Tightened Mission Control's runtime cache invalidation so session, backlog, project pulse, cron jobs, cron runs, feed, and cached search reads now roll forward immediately when their backing files change instead of waiting out the full TTL.
 - Re-verified the feed-guidance/cache pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
