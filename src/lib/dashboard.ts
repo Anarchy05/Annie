@@ -133,6 +133,15 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
+async function getFileVersion(filePath: string) {
+  try {
+    const stats = await fs.stat(filePath);
+    return `${Math.floor(stats.mtimeMs)}:${stats.size}`;
+  } catch {
+    return "missing";
+  }
+}
+
 async function runOpenClawText(args: string[], timeout = 15_000) {
   const { stdout } = await execFileAsync("openclaw", args, {
     timeout,
@@ -142,6 +151,7 @@ async function runOpenClawText(args: string[], timeout = 15_000) {
 }
 
 export async function getSessions() {
+  const version = await getFileVersion(OPENCLAW_SESSIONS_INDEX);
   return runtimeCache.withCache("sessions", 5_000, async () => {
     try {
       const index = await readJsonFile<Record<string, Record<string, unknown>>>(OPENCLAW_SESSIONS_INDEX);
@@ -184,7 +194,7 @@ export async function getSessions() {
         } satisfies SourceHealth,
       };
     }
-  });
+  }, version);
 }
 
 async function readSessionTranscript(sessionId: string) {
@@ -240,6 +250,7 @@ function extractBody(part: MessagePart, fallbackRole: string) {
 }
 
 export async function buildFeedTimeline() {
+  const version = await getFileVersion(OPENCLAW_SESSIONS_INDEX);
   return runtimeCache.withCache("feed", 5_000, async () => {
     const sessions = await getSessions();
     const recentSessions = sessions.sessions.slice(0, 4);
@@ -300,10 +311,11 @@ export async function buildFeedTimeline() {
     }
 
     return items.sort((a, b) => b.timestamp - a.timestamp).slice(0, 60);
-  });
+  }, version);
 }
 
 export async function getCronJobs() {
+  const version = await getFileVersion(OPENCLAW_CRON_JOBS_FILE);
   return runtimeCache.withCache("cron-jobs", 10_000, async () => {
     try {
       const data = await readJsonFile<{ version?: number; jobs?: CronListResponse["jobs"] }>(OPENCLAW_CRON_JOBS_FILE);
@@ -329,56 +341,21 @@ export async function getCronJobs() {
       const message = error instanceof Error ? error.message : "Cron job state is unavailable right now.";
       return buildCronJobsPayload([], buildDegradedCronState(message)) satisfies CronListResponse;
     }
-  });
+  }, version);
 }
 
 export async function getCronRuns(jobId: string) {
   const runsFile = path.join(OPENCLAW_CRON_RUNS_DIR, `${jobId}.jsonl`);
+  const version = await getFileVersion(runsFile);
 
-  try {
-    const text = await fs.readFile(runsFile, "utf8");
-    const entries = text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(-20)
-      .map((line) => {
-        try {
-          return JSON.parse(line) as CronRunsResponse["entries"][number];
-        } catch {
-          return { summary: line };
-        }
-      });
-
-    return buildCronRunsPayload(
-      entries,
-      buildOkCronState("local", entries.length ? "Loaded recent runs from local cron history." : "No runs have been recorded for this job yet.")
-    ) satisfies CronRunsResponse;
-  } catch {
+  return runtimeCache.withCache(`cron-runs:${jobId}`, 5_000, async () => {
     try {
-      const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
-      try {
-        const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
-        if (Array.isArray(parsed)) {
-          return buildCronRunsPayload(
-            parsed,
-            buildOkCronState("cli", parsed.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
-          ) satisfies CronRunsResponse;
-        }
-        if (Array.isArray(parsed.entries)) {
-          return buildCronRunsPayload(
-            parsed.entries,
-            buildOkCronState("cli", parsed.entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
-          ) satisfies CronRunsResponse;
-        }
-      } catch {
-        // Fall through to line-based parsing for older/plain-text output.
-      }
-
+      const text = await fs.readFile(runsFile, "utf8");
       const entries = text
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
+        .slice(-20)
         .map((line) => {
           try {
             return JSON.parse(line) as CronRunsResponse["entries"][number];
@@ -386,15 +363,53 @@ export async function getCronRuns(jobId: string) {
             return { summary: line };
           }
         });
+
       return buildCronRunsPayload(
         entries,
-        buildOkCronState("cli", entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+        buildOkCronState("local", entries.length ? "Loaded recent runs from local cron history." : "No runs have been recorded for this job yet.")
       ) satisfies CronRunsResponse;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Run history is unavailable right now.";
-      return buildCronRunsPayload([], buildDegradedCronState(message)) satisfies CronRunsResponse;
+    } catch {
+      try {
+        const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
+        try {
+          const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
+          if (Array.isArray(parsed)) {
+            return buildCronRunsPayload(
+              parsed,
+              buildOkCronState("cli", parsed.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+            ) satisfies CronRunsResponse;
+          }
+          if (Array.isArray(parsed.entries)) {
+            return buildCronRunsPayload(
+              parsed.entries,
+              buildOkCronState("cli", parsed.entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+            ) satisfies CronRunsResponse;
+          }
+        } catch {
+          // Fall through to line-based parsing for older/plain-text output.
+        }
+
+        const entries = text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            try {
+              return JSON.parse(line) as CronRunsResponse["entries"][number];
+            } catch {
+              return { summary: line };
+            }
+          });
+        return buildCronRunsPayload(
+          entries,
+          buildOkCronState("cli", entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
+        ) satisfies CronRunsResponse;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Run history is unavailable right now.";
+        return buildCronRunsPayload([], buildDegradedCronState(message)) satisfies CronRunsResponse;
+      }
     }
-  }
+  }, version);
 }
 
 async function getTasks() {
@@ -451,6 +466,7 @@ async function getTasks() {
 }
 
 async function getPriorityItems() {
+  const version = await getFileVersion(TODO_FILE);
   return runtimeCache.withCache("todo-priorities", 15_000, async () => {
     try {
       const raw = await fs.readFile(TODO_FILE, "utf8");
@@ -475,10 +491,11 @@ async function getPriorityItems() {
         } satisfies SourceHealth,
       };
     }
-  });
+  }, version);
 }
 
 async function getProjectPulse() {
+  const version = await getFileVersion("/root/projects/mission-control/state/projects.json");
   return runtimeCache.withCache("project-pulse", 15_000, async () => {
     try {
       const projects = await listProjects();
@@ -506,7 +523,7 @@ async function getProjectPulse() {
     } catch {
       return [] as ProjectPulseItem[];
     }
-  });
+  }, version);
 }
 
 export {
@@ -682,7 +699,8 @@ export async function getBannerData() {
 }
 
 export async function buildSearchResults(query: string) {
-  if (!query.trim()) {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
     return {
       memories: [],
       files: [],
@@ -691,75 +709,83 @@ export async function buildSearchResults(query: string) {
     };
   }
 
-  const [memoryResults, sessions, cronResults, grepText] = await Promise.all([
-    invokeOpenClaw<MemorySearchResponse>(
-      "memory_search",
-      {
-        query,
-        maxResults: 8,
-      },
-      { timeoutMs: 1_200 }
-    ).catch(() => ({ hits: [], results: [] } satisfies MemorySearchResponse)),
-    getSessions(),
-    getCronJobs(),
-    execFileAsync(
-      "bash",
-      [
-        "-lc",
-        `grep -RIn --exclude-dir=node_modules --exclude-dir=.git ${JSON.stringify(query)} /root/.openclaw/workspace /root/projects/mission-control 2>/dev/null | head -40`,
-      ],
-      { timeout: 10_000, maxBuffer: 5 * 1024 * 1024 }
-    )
-      .then(({ stdout }) => stdout.trim())
-      .catch(() => ""),
-  ]);
+  const version = [
+    await getFileVersion(OPENCLAW_SESSIONS_INDEX),
+    await getFileVersion(OPENCLAW_CRON_JOBS_FILE),
+  ].join("|");
 
-  const cronMatches = cronResults.jobs.filter((job) => {
-    const haystack = [job.name, job.description, job.payload?.message, job.payload?.text]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query.toLowerCase());
-  });
+  return runtimeCache.withCache(`search:${normalizedQuery.toLowerCase()}`, 3_000, async () => {
+    const [memoryResults, sessions, cronResults, grepText] = await Promise.all([
+      invokeOpenClaw<MemorySearchResponse>(
+        "memory_search",
+        {
+          query: normalizedQuery,
+          maxResults: 8,
+        },
+        { timeoutMs: 1_200 }
+      ).catch(() => ({ hits: [], results: [] } satisfies MemorySearchResponse)),
+      getSessions(),
+      getCronJobs(),
+      execFileAsync(
+        "bash",
+        [
+          "-lc",
+          `grep -RIn --exclude-dir=node_modules --exclude-dir=.git ${JSON.stringify(normalizedQuery)} /root/.openclaw/workspace /root/projects/mission-control 2>/dev/null | head -40`,
+        ],
+        { timeout: 10_000, maxBuffer: 5 * 1024 * 1024 }
+      )
+        .then(({ stdout }) => stdout.trim())
+        .catch(() => ""),
+    ]);
 
-  const files = grepText
-    ? grepText.split("\n").slice(0, 40).map((line, index) => {
-        const [filePath, lineNumber, ...rest] = line.split(":");
-        return {
-          id: `file-${index}`,
-          path: filePath,
-          lineNumber: Number(lineNumber),
-          preview: rest.join(":").trim(),
-        };
-      }).filter((entry) => entry.path && Number.isFinite(entry.lineNumber))
-    : [];
+    const queryLower = normalizedQuery.toLowerCase();
+    const cronMatches = cronResults.jobs.filter((job) => {
+      const haystack = [job.name, job.description, job.payload?.message, job.payload?.text]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(queryLower);
+    });
 
-  return {
-    memories: (memoryResults.hits || memoryResults.results || []).map((hit, index) => ({
-      id: `memory-${index}`,
-      path: hit.path,
-      line: hit.lines?.from || hit.startLine,
-      preview: hit.preview || hit.snippet || "",
-      score: hit.score || 0,
-    })),
-    files,
-    conversations: sessions.sessions
-      .filter((session) => session.key.toLowerCase().includes(query.toLowerCase()))
-      .map((session) => ({
-        id: session.key,
-        key: session.key,
-        sessionId: session.sessionId,
-        label: session.key,
-        model: session.model || "unknown",
-        updatedAt: session.updatedAt || 0,
-        status: session.ageMs && session.ageMs < 120_000 ? "active" : "idle",
+    const files = grepText
+      ? grepText.split("\n").slice(0, 40).map((line, index) => {
+          const [filePath, lineNumber, ...rest] = line.split(":");
+          return {
+            id: `file-${index}`,
+            path: filePath,
+            lineNumber: Number(lineNumber),
+            preview: rest.join(":").trim(),
+          };
+        }).filter((entry) => entry.path && Number.isFinite(entry.lineNumber))
+      : [];
+
+    return {
+      memories: (memoryResults.hits || memoryResults.results || []).map((hit, index) => ({
+        id: `memory-${index}`,
+        path: hit.path,
+        line: hit.lines?.from || hit.startLine,
+        preview: hit.preview || hit.snippet || "",
+        score: hit.score || 0,
       })),
-    tasks: cronMatches.map((job) => ({
-      id: job.id,
-      name: job.name || "Untitled job",
-      description: job.description || job.payload?.message || job.payload?.text || "",
-      schedule: job.schedule?.expr || job.schedule?.kind || "manual",
-      enabled: !!job.enabled,
-    })),
-  };
+      files,
+      conversations: sessions.sessions
+        .filter((session) => session.key.toLowerCase().includes(queryLower))
+        .map((session) => ({
+          id: session.key,
+          key: session.key,
+          sessionId: session.sessionId,
+          label: session.key,
+          model: session.model || "unknown",
+          updatedAt: session.updatedAt || 0,
+          status: session.ageMs && session.ageMs < 120_000 ? "active" : "idle",
+        })),
+      tasks: cronMatches.map((job) => ({
+        id: job.id,
+        name: job.name || "Untitled job",
+        description: job.description || job.payload?.message || job.payload?.text || "",
+        schedule: job.schedule?.expr || job.schedule?.kind || "manual",
+        enabled: !!job.enabled,
+      })),
+    };
+  }, version);
 }

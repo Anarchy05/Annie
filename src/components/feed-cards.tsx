@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { formatRelative } from "@/lib/feed-view-model";
-import type { ControlCenterData, QuickActionPlan } from "@/lib/feed-view-model";
+import type { ControlCenterData, QuickActionPlan, SpotlightPlan } from "@/lib/feed-view-model";
 
 export type QuickAction = QuickActionPlan & {
   onSelect?: () => void;
@@ -106,6 +106,32 @@ export function QuickActionCard({ action }: { action: QuickAction }) {
 
   return (
     <Link href={action.href} className={classes}>
+      {content}
+    </Link>
+  );
+}
+
+export function SpotlightCard({ spotlight }: { spotlight: SpotlightPlan & { onSelect?: () => void } }) {
+  const classes = `rounded-3xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-white/20 ${quickActionTone(spotlight.tone)}`;
+  const content = (
+    <>
+      <p className="text-[11px] uppercase tracking-[0.18em] text-white/40">{spotlight.label}</p>
+      <p className="mt-2 text-base font-semibold text-white">{spotlight.title}</p>
+      <p className="mt-1 text-sm text-white/70">{spotlight.detail}</p>
+      <p className="mt-4 text-sm font-medium text-white/85">{spotlight.cta} →</p>
+    </>
+  );
+
+  if (spotlight.kind === "button") {
+    return (
+      <button type="button" onClick={spotlight.onSelect} className={classes}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={spotlight.href} className={classes}>
       {content}
     </Link>
   );

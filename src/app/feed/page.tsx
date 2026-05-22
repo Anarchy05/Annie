@@ -10,6 +10,7 @@ import {
   MobileCommandDock,
   Panel,
   ProjectCard,
+  SpotlightCard,
   type MobileCommand,
   type QuickAction,
   QuickActionCard,
@@ -23,6 +24,7 @@ import { StatePanel } from "@/components/state-panels";
 import {
   buildLiveWorkItems,
   buildQuickActionPlans,
+  buildRecommendationSpotlight,
   buildRecentWorkItems,
   buildSourcesMap,
   deriveFeedStatus,
@@ -103,12 +105,15 @@ export default function FeedPage() {
     [lastLoadedAt, loadAutomationWatch]
   );
 
-  const quickActions = useMemo<QuickAction[]>(() => {
-    const handlers: Partial<Record<string, () => void>> = {
+  const handlers = useMemo<Partial<Record<string, () => void>>>(
+    () => ({
       "refresh-control-center": () => void load("refresh"),
       "automation-refresh": () => void loadAutomationWatch(),
-    };
+    }),
+    [load, loadAutomationWatch]
+  );
 
+  const quickActions = useMemo<QuickAction[]>(() => {
     return buildQuickActionPlans({
       controlCenter,
       automationWatch,
@@ -119,7 +124,22 @@ export default function FeedPage() {
       ...action,
       onSelect: handlers[action.id],
     }));
-  }, [automationError, automationWatch, controlCenter, error, liveWork, load, loadAutomationWatch]);
+  }, [automationError, automationWatch, controlCenter, error, handlers, liveWork]);
+
+  const recommendationSpotlight = useMemo(() => {
+    const spotlight = buildRecommendationSpotlight({
+      controlCenter,
+      automationWatch,
+      error,
+      automationError,
+      liveWork,
+    });
+
+    return {
+      ...spotlight,
+      onSelect: handlers[spotlight.id],
+    };
+  }, [automationError, automationWatch, controlCenter, error, handlers, liveWork]);
 
   const mobileCommands = useMemo<MobileCommand[]>(() => {
     const nextBeat = controlCenter.agenda[0];
@@ -253,10 +273,13 @@ export default function FeedPage() {
                 </div>
               ) : null}
 
-              <div className="mt-5 rounded-3xl border border-[#2A2A3E] bg-[linear-gradient(135deg,rgba(96,165,250,0.14),rgba(167,139,250,0.14))] p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/45">Focus</p>
-                <p className="mt-2 text-lg font-semibold text-white">{controlCenter.focus.headline}</p>
-                <p className="mt-1 text-sm text-white/70">{controlCenter.focus.note}</p>
+              <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div className="rounded-3xl border border-[#2A2A3E] bg-[linear-gradient(135deg,rgba(96,165,250,0.14),rgba(167,139,250,0.14))] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/45">Focus</p>
+                  <p className="mt-2 text-lg font-semibold text-white">{controlCenter.focus.headline}</p>
+                  <p className="mt-1 text-sm text-white/70">{controlCenter.focus.note}</p>
+                </div>
+                <SpotlightCard spotlight={recommendationSpotlight} />
               </div>
 
               {controlCenter.alerts.length ? (

@@ -11,6 +11,12 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-22
+
+- Added an "Annie's nudge" spotlight card to the top of the feed so Mission Control now surfaces one clearest next move immediately — refresh a fuzzy read, inspect hot tasks, check failing automation, steer a live thread, or jump straight to the top priority/project pulse — instead of making the operator scan several cards first.
+- Tightened Mission Control's runtime cache invalidation so session, backlog, project pulse, cron jobs, cron runs, feed, and cached search reads now roll forward immediately when their backing files change instead of waiting out the full TTL.
+- Re-verified the feed-guidance/cache pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
+
 ## 2026-05-21
 
 - Tightened the feed's task-runway signal so repeated recent failures/completions now collapse into grouped issue cards with repeat counts instead of flooding Mission Control with near-identical rows; Annie still keeps the true attention/done totals, but the runway reads much more clearly when one automation is failing over and over.

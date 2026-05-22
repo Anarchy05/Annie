@@ -100,6 +100,10 @@ export type QuickActionPlan = {
   kind: "link" | "button";
 };
 
+export type SpotlightPlan = QuickActionPlan & {
+  cta: string;
+};
+
 export const emptyControlCenter: ControlCenterData = {
   priorities: [],
   activeWork: [],
@@ -172,6 +176,146 @@ export function deriveFeedStatus(args: {
     blockingAutomationError,
     staleSignals,
   };
+}
+
+export function buildRecommendationSpotlight(args: {
+  controlCenter: ControlCenterData;
+  automationWatch: AutomationWatchData | null;
+  error: string | null;
+  automationError: string | null;
+  liveWork: ControlCenterData["activeWork"];
+  now?: number;
+}) {
+  const { controlCenter, automationWatch, error, automationError, liveWork } = args;
+
+  if (error) {
+    return {
+      id: "refresh-control-center",
+      label: "Annie's nudge",
+      title: "Refresh Annie's dashboard read",
+      detail: "Mission Control hit a rough patch. Give Annie one clean retry before making decisions.",
+      href: "#overview",
+      tone: "warning",
+      kind: "button",
+      cta: "Refresh Annie now",
+    } satisfies SpotlightPlan;
+  }
+
+  if (controlCenter.taskTracker.summary.attention > 0) {
+    return {
+      id: "task-attention",
+      label: "Annie's nudge",
+      title: `${controlCenter.taskTracker.summary.attention} task${controlCenter.taskTracker.summary.attention === 1 ? " needs" : "s need"} a decision`,
+      detail: controlCenter.taskTracker.note,
+      href: "#task-runway",
+      tone: "danger",
+      kind: "link",
+      cta: "Open the task runway",
+    } satisfies SpotlightPlan;
+  }
+
+  if (automationError) {
+    return {
+      id: "automation-refresh",
+      label: "Annie's nudge",
+      title: "Refresh the automation watch",
+      detail: "Recent cron health went fuzzy, so Annie is missing part of the picture.",
+      href: "#automation-watch",
+      tone: "warning",
+      kind: "button",
+      cta: "Reload automation health",
+    } satisfies SpotlightPlan;
+  }
+
+  if ((automationWatch?.summary.failing || 0) > 0) {
+    return {
+      id: "automation-failing",
+      label: "Annie's nudge",
+      title: `${automationWatch?.summary.failing || 0} automation job${automationWatch?.summary.failing === 1 ? " is" : "s are"} failing`,
+      detail: automationWatch?.headline || "Check the most recent failing runs before the next beat lands.",
+      href: "#automation-watch",
+      tone: "danger",
+      kind: "link",
+      cta: "Inspect recent failures",
+    } satisfies SpotlightPlan;
+  }
+
+  const blockedProject = controlCenter.projects.find((project) => project.status === "blocked");
+  if (blockedProject) {
+    return {
+      id: "blocked-project",
+      label: "Annie's nudge",
+      title: `Unblock ${blockedProject.name}`,
+      detail: blockedProject.nextStep || blockedProject.summary,
+      href: "#project-pulse",
+      tone: "warning",
+      kind: "link",
+      cta: "Open project pulse",
+    } satisfies SpotlightPlan;
+  }
+
+  if (liveWork.length > 0) {
+    return {
+      id: "live-thread",
+      label: "Annie's nudge",
+      title: liveWork[0]?.title || "A live thread is moving",
+      detail: "Annie is already in motion here. Open chat if you want to steer the thread directly.",
+      href: "/chat",
+      tone: "success",
+      kind: "link",
+      cta: "Open chat",
+    } satisfies SpotlightPlan;
+  }
+
+  if (controlCenter.priorities[0]) {
+    return {
+      id: "top-priority",
+      label: "Annie's nudge",
+      title: controlCenter.recommendation.headline,
+      detail: controlCenter.recommendation.note,
+      href: "#top-priorities",
+      tone: "info",
+      kind: "link",
+      cta: "Review top priority",
+    } satisfies SpotlightPlan;
+  }
+
+  if (controlCenter.agenda[0]) {
+    return {
+      id: "next-beat",
+      label: "Annie's nudge",
+      title: controlCenter.recommendation.headline,
+      detail: `${formatRelativeFuture(controlCenter.agenda[0].timestamp, args.now)} · ${controlCenter.agenda[0].detail}`,
+      href: "#automation-watch",
+      tone: "info",
+      kind: "link",
+      cta: "See the next beat",
+    } satisfies SpotlightPlan;
+  }
+
+  if (controlCenter.projects[0]) {
+    return {
+      id: "project-pulse",
+      label: "Annie's nudge",
+      title: controlCenter.recommendation.headline,
+      detail: controlCenter.recommendation.note,
+      href: "#project-pulse",
+      tone: "success",
+      kind: "link",
+      cta: "Open project pulse",
+    } satisfies SpotlightPlan;
+  }
+
+  return {
+    id: "ask-annie",
+    label: "Annie's nudge",
+    title: controlCenter.recommendation.headline,
+    detail: controlCenter.recommendation.note,
+    href: "/chat",
+    tone: "success",
+    kind: "link",
+    cta: "Ask Annie for direction",
+  } satisfies SpotlightPlan;
 }
 
 export function buildQuickActionPlans(args: {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildLiveWorkItems,
   buildQuickActionPlans,
+  buildRecommendationSpotlight,
   buildRecentWorkItems,
   deriveFeedStatus,
   emptyControlCenter,
@@ -81,6 +82,34 @@ test("buildQuickActionPlans prioritizes recovery signals before normal navigatio
     "top-priority",
     "project-pulse",
   ]);
+});
+
+test("buildRecommendationSpotlight picks the strongest next move for the operator", () => {
+  const controlCenter = {
+    ...emptyControlCenter,
+    taskTracker: {
+      ...emptyControlCenter.taskTracker,
+      note: "A cron job needs a decision.",
+      summary: { ...emptyControlCenter.taskTracker.summary, attention: 1 },
+    },
+    recommendation: {
+      headline: "Best next move: inspect the runway.",
+      note: "A cron job needs a decision.",
+    },
+  };
+
+  const spotlight = buildRecommendationSpotlight({
+    controlCenter,
+    automationWatch: null,
+    error: null,
+    automationError: null,
+    liveWork: [],
+  });
+
+  assert.equal(spotlight.id, "task-attention");
+  assert.equal(spotlight.kind, "link");
+  assert.equal(spotlight.href, "#task-runway");
+  assert.match(spotlight.cta, /task runway/i);
 });
 
 test("buildQuickActionPlans falls back to live work, schedule, and backlog guidance when healthy", () => {
