@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-23
+
+- Tightened Mission Control's top-level dashboard freshness so the control-center, automation watch, and task runway caches now invalidate as soon as their real local state changes instead of waiting out the old 10-20s TTLs; Annie's main dashboard cards now react much faster to task, cron-run, backlog, project, and session updates.
+- Re-verified the cache-freshness pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service and confirmed `/health` returned live.
+
 ## 2026-05-22
 
 - Overrode Mission Control's transitive `postcss` copy to `^8.5.12` so Next no longer drags an audited vulnerable `8.4.31` subtree into the production dependency graph; `npm audit --omit=dev` is now clean again.

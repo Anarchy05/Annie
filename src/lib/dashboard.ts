@@ -41,7 +41,12 @@ const OPENCLAW_AGENT_DIR = path.join(OPENCLAW_STATE_DIR, "agents", "main", "sess
 const OPENCLAW_SESSIONS_INDEX = path.join(OPENCLAW_AGENT_DIR, "sessions.json");
 const OPENCLAW_CRON_JOBS_FILE = path.join(OPENCLAW_STATE_DIR, "cron", "jobs.json");
 const OPENCLAW_CRON_RUNS_DIR = path.join(OPENCLAW_STATE_DIR, "cron", "runs");
+const OPENCLAW_TASKS_DIR = path.join(OPENCLAW_STATE_DIR, "tasks");
+const OPENCLAW_TASKS_DB = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite");
+const OPENCLAW_TASKS_DB_WAL = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-wal");
+const OPENCLAW_TASKS_DB_SHM = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-shm");
 const TODO_FILE = "/root/projects/mission-control/TODO.md";
+const PROJECTS_FILE = "/root/projects/mission-control/state/projects.json";
 const DEFAULT_CONTEXT_TOKENS = 272000;
 
 type MessagePart = {
@@ -148,6 +153,36 @@ async function runOpenClawText(args: string[], timeout = 15_000) {
     maxBuffer: 10 * 1024 * 1024,
   });
   return stdout.trim();
+}
+
+function combineVersionParts(parts: Array<string | number | null | undefined>) {
+  return parts.map((part) => String(part ?? "missing")).join("|");
+}
+
+async function getTaskStateVersion() {
+  const [dbVersion, walVersion, shmVersion] = await Promise.all([
+    getFileVersion(OPENCLAW_TASKS_DB),
+    getFileVersion(OPENCLAW_TASKS_DB_WAL),
+    getFileVersion(OPENCLAW_TASKS_DB_SHM),
+  ]);
+
+  return combineVersionParts([dbVersion, walVersion, shmVersion]);
+}
+
+async function getCronRunsAggregateVersion() {
+  try {
+    const entries = await fs.readdir(OPENCLAW_CRON_RUNS_DIR, { withFileTypes: true });
+    const fileVersions = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile())
+        .map(async (entry) => `${entry.name}:${await getFileVersion(path.join(OPENCLAW_CRON_RUNS_DIR, entry.name))}`)
+    );
+
+    fileVersions.sort();
+    return combineVersionParts(fileVersions);
+  } catch {
+    return "missing";
+  }
 }
 
 export async function getSessions() {
@@ -413,6 +448,7 @@ export async function getCronRuns(jobId: string) {
 }
 
 async function getTasks() {
+  const version = await getTaskStateVersion();
   return runtimeCache.withCache("tasks", 10_000, async () => {
     try {
       const response = await runOpenClawJson<TasksListResponse & {
@@ -462,7 +498,7 @@ async function getTasks() {
         } satisfies SourceHealth,
       };
     }
-  });
+  }, version);
 }
 
 async function getPriorityItems() {
@@ -495,7 +531,7 @@ async function getPriorityItems() {
 }
 
 async function getProjectPulse() {
-  const version = await getFileVersion("/root/projects/mission-control/state/projects.json");
+  const version = await getFileVersion(PROJECTS_FILE);
   return runtimeCache.withCache("project-pulse", 15_000, async () => {
     try {
       const projects = await listProjects();
@@ -534,6 +570,16 @@ export {
 } from "@/lib/dashboard-fallbacks";
 
 export async function getControlCenterData() {
+  const version = combineVersionParts(
+    await Promise.all([
+      getFileVersion(TODO_FILE),
+      getTaskStateVersion(),
+      getFileVersion(OPENCLAW_SESSIONS_INDEX),
+      getFileVersion(OPENCLAW_CRON_JOBS_FILE),
+      getFileVersion(PROJECTS_FILE),
+    ])
+  );
+
   return runtimeCache.withCache("control-center", 10_000, async () => {
     const [priorityState, tasks, sessions, jobs, projects] = await Promise.all([
       getPriorityItems(),
@@ -599,10 +645,12 @@ export async function getControlCenterData() {
         sources,
       },
     } satisfies ControlCenterData;
-  });
+  }, version);
 }
 
 export async function getAutomationWatchData() {
+  const version = combineVersionParts(await Promise.all([getFileVersion(OPENCLAW_CRON_JOBS_FILE), getCronRunsAggregateVersion()]));
+
   return runtimeCache.withCache("automation-watch", 20_000, async () => {
     const jobs = await getCronJobs();
     const enabledJobs = jobs.jobs
@@ -618,7 +666,7 @@ export async function getAutomationWatchData() {
     );
 
     return buildAutomationWatchDataModel(runsByJob);
-  });
+  }, version);
 }
 
 async function getStatusText() {
