@@ -13,6 +13,8 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-24
 
+- Hardened Mission Control's dashboard data layer against partially malformed OpenClaw state by extracting resilient session/cron parsers into a dedicated `openclaw-state` module; the control-center, automation watch, and feed now salvage valid rows, surface clear degraded details about skipped bad entries, and stop dropping whole panels because of one broken JSON/JSONL record.
+- Added focused parser coverage for partial session indexes, cron jobs, and cron runs, then re-verified the weekly refactor pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
 - Added an Annie-style runway triage layer to the feed's task panel so Mission Control now distinguishes likely operational/runtime hiccups (agent response stalls, model idle timeouts, CLI waits) from genuinely hot task failures, and tells the operator how to react instead of just listing failed rows.
 - Re-verified the runway-triage pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
 

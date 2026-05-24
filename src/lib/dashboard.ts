@@ -15,7 +15,6 @@ import {
   buildTaskTracker,
   parsePriorityItems,
   type ControlCenterData,
-  type Session,
   type SourceHealth,
   type TasksListResponse,
   type TimelineItem,
@@ -31,6 +30,7 @@ import {
   type CronStateMeta,
 } from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
+import { normalizeCronJobs, normalizeCronRunEntry, normalizeSessionsIndex, parseJsonLines } from "@/lib/openclaw-state";
 import { listProjects } from "@/lib/projects";
 import { classifyRouteSpeed, getRouteDiagnostics } from "@/lib/route-diagnostics";
 import { runtimeCache } from "@/lib/runtime-cache";
@@ -47,7 +47,6 @@ const OPENCLAW_TASKS_DB_WAL = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-wal");
 const OPENCLAW_TASKS_DB_SHM = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-shm");
 const TODO_FILE = "/root/projects/mission-control/TODO.md";
 const PROJECTS_FILE = "/root/projects/mission-control/state/projects.json";
-const DEFAULT_CONTEXT_TOKENS = 272000;
 
 type MessagePart = {
   type: "text" | "toolCall" | "thinking" | string;
@@ -189,22 +188,8 @@ export async function getSessions() {
   const version = await getFileVersion(OPENCLAW_SESSIONS_INDEX);
   return runtimeCache.withCache("sessions", 5_000, async () => {
     try {
-      const index = await readJsonFile<Record<string, Record<string, unknown>>>(OPENCLAW_SESSIONS_INDEX);
-      const sessions = Object.entries(index).map(([key, value]) => ({
-        key,
-        sessionId: String(value.sessionId || ""),
-        updatedAt: Number(value.updatedAt || 0),
-        ageMs: Number(value.ageMs || (value.updatedAt ? Date.now() - Number(value.updatedAt) : 0)),
-        totalTokens: typeof value.totalTokens === "number" ? value.totalTokens : null,
-        contextTokens: typeof value.contextTokens === "number" ? value.contextTokens : DEFAULT_CONTEXT_TOKENS,
-        model: typeof value.model === "string" ? value.model : "gpt-5.4",
-        agentId: typeof value.agentId === "string" ? value.agentId : "main",
-        kind: typeof value.chatType === "string" ? value.chatType : typeof value.kind === "string" ? value.kind : "direct",
-        systemSent: Boolean(value.systemSent),
-        abortedLastRun: Boolean(value.abortedLastRun),
-        inputTokens: typeof value.inputTokens === "number" ? value.inputTokens : undefined,
-        outputTokens: typeof value.outputTokens === "number" ? value.outputTokens : undefined,
-      })) satisfies Session[];
+      const index = await readJsonFile<unknown>(OPENCLAW_SESSIONS_INDEX);
+      const { sessions, invalidCount } = normalizeSessionsIndex(index, Date.now());
 
       sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
       return {
@@ -213,8 +198,12 @@ export async function getSessions() {
         source: {
           key: "sessions",
           label: "Sessions",
-          status: sessions.length ? "ok" : "empty",
-          detail: sessions.length ? `${sessions.length} recent session${sessions.length === 1 ? "" : "s"} indexed` : "No recent sessions are indexed yet",
+          status: invalidCount > 0 ? "degraded" : sessions.length ? "ok" : "empty",
+          detail: invalidCount > 0
+            ? `Loaded ${sessions.length} recent session${sessions.length === 1 ? "" : "s"} but skipped ${invalidCount} malformed entr${invalidCount === 1 ? "y" : "ies"}`
+            : sessions.length
+              ? `${sessions.length} recent session${sessions.length === 1 ? "" : "s"} indexed`
+              : "No recent sessions are indexed yet",
         } satisfies SourceHealth,
       };
     } catch (error) {
@@ -236,10 +225,9 @@ async function readSessionTranscript(sessionId: string) {
   const transcriptPath = path.join(OPENCLAW_AGENT_DIR, `${sessionId}.jsonl`);
   try {
     const raw = await fs.readFile(transcriptPath, "utf8");
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    return parseJsonLines<Record<string, unknown>>(raw, (value) =>
+      typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+    ).items;
   } catch {
     return [] as Record<string, unknown>[];
   }
@@ -353,30 +341,46 @@ export async function getCronJobs() {
   const version = await getFileVersion(OPENCLAW_CRON_JOBS_FILE);
   return runtimeCache.withCache("cron-jobs", 10_000, async () => {
     try {
-      const data = await readJsonFile<{ version?: number; jobs?: CronListResponse["jobs"] }>(OPENCLAW_CRON_JOBS_FILE);
-      const jobs = (data.jobs || []).map((job) => {
+      const data = await readJsonFile<unknown>(OPENCLAW_CRON_JOBS_FILE);
+      const { jobs: rawJobs, invalidCount } = normalizeCronJobs(data);
+      const jobs = rawJobs.map((job) => {
         if (typeof job.state?.nextRunAtMs === "number") return job;
         const nextRunAtMs = deriveNextRunAtMs(job.schedule);
         return nextRunAtMs ? { ...job, state: { ...job.state, nextRunAtMs } } : job;
       });
-      const derivedCount = jobs.filter((job) => typeof job.state?.nextRunAtMs === "number").length - (data.jobs || []).filter((job) => typeof job.state?.nextRunAtMs === "number").length;
+      const derivedCount = jobs.filter((job) => typeof job.state?.nextRunAtMs === "number").length - rawJobs.filter((job) => typeof job.state?.nextRunAtMs === "number").length;
+
+      const detailParts = [
+        !jobs.length
+          ? "No cron jobs are scheduled right now."
+          : derivedCount > 0
+            ? `Loaded local cron job state and derived ${derivedCount} upcoming run${derivedCount === 1 ? "" : "s"} from schedule metadata.`
+            : "Loaded local cron job state.",
+        invalidCount > 0 ? `Skipped ${invalidCount} malformed cron entr${invalidCount === 1 ? "y" : "ies"}.` : null,
+      ].filter(Boolean);
 
       return buildCronJobsPayload(
         jobs,
-        buildOkCronState(
-          "local",
-          !jobs.length
-            ? "No cron jobs are scheduled right now."
-            : derivedCount > 0
-              ? `Loaded local cron job state and derived ${derivedCount} upcoming run${derivedCount === 1 ? "" : "s"} from schedule metadata.`
-              : "Loaded local cron job state."
-        )
+        invalidCount > 0
+          ? { status: "degraded", source: "local", detail: detailParts.join(" ") }
+          : buildOkCronState("local", detailParts.join(" "))
       ) satisfies CronListResponse;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Cron job state is unavailable right now.";
       return buildCronJobsPayload([], buildDegradedCronState(message)) satisfies CronListResponse;
     }
   }, version);
+}
+
+function buildCronRunMeta(source: "local" | "cli", entryCount: number, invalidCount = 0): CronStateMeta {
+  const detailParts = [
+    entryCount ? `Loaded recent runs from ${source === "local" ? "local cron history" : "the OpenClaw CLI"}.` : "No runs have been recorded for this job yet.",
+    invalidCount > 0 ? `Skipped ${invalidCount} malformed run entr${invalidCount === 1 ? "y" : "ies"}.` : null,
+  ].filter(Boolean);
+
+  return invalidCount > 0
+    ? { status: "degraded", source, detail: detailParts.join(" ") }
+    : buildOkCronState(source, detailParts.join(" "));
 }
 
 export async function getCronRuns(jobId: string) {
@@ -386,59 +390,29 @@ export async function getCronRuns(jobId: string) {
   return runtimeCache.withCache(`cron-runs:${jobId}`, 5_000, async () => {
     try {
       const text = await fs.readFile(runsFile, "utf8");
-      const entries = text
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .slice(-20)
-        .map((line) => {
-          try {
-            return JSON.parse(line) as CronRunsResponse["entries"][number];
-          } catch {
-            return { summary: line };
-          }
-        });
+      const { items, invalidCount } = parseJsonLines(text, normalizeCronRunEntry);
+      const entries = items.slice(-20);
 
-      return buildCronRunsPayload(
-        entries,
-        buildOkCronState("local", entries.length ? "Loaded recent runs from local cron history." : "No runs have been recorded for this job yet.")
-      ) satisfies CronRunsResponse;
+      return buildCronRunsPayload(entries, buildCronRunMeta("local", entries.length, invalidCount)) satisfies CronRunsResponse;
     } catch {
       try {
         const text = await runOpenClawText(["cron", "runs", "--id", jobId, "--limit", "20", "--timeout", "10000"], 15_000);
         try {
           const parsed = JSON.parse(text) as Partial<CronRunsResponse> | CronRunsResponse["entries"];
           if (Array.isArray(parsed)) {
-            return buildCronRunsPayload(
-              parsed,
-              buildOkCronState("cli", parsed.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
-            ) satisfies CronRunsResponse;
+            const entries = parsed.map((entry) => normalizeCronRunEntry(entry)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+            return buildCronRunsPayload(entries, buildCronRunMeta("cli", entries.length, parsed.length - entries.length)) satisfies CronRunsResponse;
           }
           if (Array.isArray(parsed.entries)) {
-            return buildCronRunsPayload(
-              parsed.entries,
-              buildOkCronState("cli", parsed.entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
-            ) satisfies CronRunsResponse;
+            const entries = parsed.entries.map((entry) => normalizeCronRunEntry(entry)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+            return buildCronRunsPayload(entries, buildCronRunMeta("cli", entries.length, parsed.entries.length - entries.length)) satisfies CronRunsResponse;
           }
         } catch {
           // Fall through to line-based parsing for older/plain-text output.
         }
 
-        const entries = text
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            try {
-              return JSON.parse(line) as CronRunsResponse["entries"][number];
-            } catch {
-              return { summary: line };
-            }
-          });
-        return buildCronRunsPayload(
-          entries,
-          buildOkCronState("cli", entries.length ? "Loaded recent runs from the OpenClaw CLI." : "No runs have been recorded for this job yet.")
-        ) satisfies CronRunsResponse;
+        const { items, invalidCount } = parseJsonLines(text, normalizeCronRunEntry);
+        return buildCronRunsPayload(items, buildCronRunMeta("cli", items.length, invalidCount)) satisfies CronRunsResponse;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Run history is unavailable right now.";
         return buildCronRunsPayload([], buildDegradedCronState(message)) satisfies CronRunsResponse;

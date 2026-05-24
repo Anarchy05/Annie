@@ -75,7 +75,7 @@ Core goals:
 
 ### P0 - Reliability
 
-- [ ] Harden all dashboard API routes against missing/partial local OpenClaw state.
+- [x] Harden all dashboard API routes against missing/partial local OpenClaw state. Mission Control now salvages valid session/cron rows from partially malformed OpenClaw files, marks those reads as degraded instead of breaking whole panels, and covers the new parser layer with focused tests.
 - [x] Let the feed and control-center panels degrade independently when one live API is unavailable.
 - [x] Add graceful empty/error states for every dashboard panel/page when backing data is unavailable. The remaining feed/control-center gaps now treat quiet sources as empty instead of degraded, while preserving targeted warning states when real reads fail.
 - [x] Reduce dashboard service restarts and document stable service management. The restart helper now cleanly restarts an existing transient unit instead of colliding with it.
