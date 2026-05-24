@@ -127,8 +127,46 @@ test("buildTaskTracker summarizes live task flow while tucking older failures in
   assert.equal(tracker.items[1]?.title, "Sub-agent handoff");
   assert.equal(tracker.items[1]?.detail, "Timed out while waiting for the CLI. Retry later.");
   assert.equal(tracker.items[1]?.repeatCount, 1);
+  assert.equal(tracker.triage?.tone, "danger");
+  assert.match(tracker.triage?.note || "", /sub-agent handoff/i);
   assert.ok(!tracker.items.some((item) => item.title === "Old failure"));
   assert.ok(!tracker.items.some((item) => item.title === "Old completion"));
+});
+
+test("buildTaskTracker spots operational failure clusters and tells Annie how to react", () => {
+  const now = Date.UTC(2026, 4, 24, 0, 0, 0);
+  const tracker = buildTaskTracker(
+    [
+      {
+        taskId: "failed-1",
+        label: "Mission Control daily improvement",
+        status: "failed",
+        terminalSummary: "⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying.",
+        updatedAtMs: now - 5 * 60_000,
+      },
+      {
+        taskId: "failed-2",
+        label: "Repo nightly pass",
+        status: "failed",
+        terminalSummary: "The model did not produce a response before the model idle timeout.",
+        updatedAtMs: now - 10 * 60_000,
+      },
+      {
+        taskId: "failed-3",
+        label: "Branch cleanup",
+        status: "error",
+        terminalSummary: "⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying.",
+        updatedAtMs: now - 15 * 60_000,
+      },
+    ],
+    now
+  );
+
+  assert.equal(tracker.summary.attention, 3);
+  assert.equal(tracker.triage?.tone, "warning");
+  assert.match(tracker.triage?.title || "", /operational/i);
+  assert.match(tracker.triage?.note || "", /agent response hiccups/i);
+  assert.match(tracker.triage?.note || "", /verify any tool side effects/i);
 });
 
 test("buildTaskTracker groups repeated recent failures and completions without hiding the real counts", () => {

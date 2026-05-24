@@ -453,6 +453,22 @@ export default function FeedPage() {
                   </p>
                 ) : null}
 
+                {controlCenter.taskTracker.triage ? (
+                  <div
+                    className={`rounded-2xl border p-4 ${
+                      controlCenter.taskTracker.triage.tone === "danger"
+                        ? "border-red-400/30 bg-red-400/10"
+                        : controlCenter.taskTracker.triage.tone === "warning"
+                          ? "border-yellow-400/30 bg-yellow-400/10"
+                          : "border-[#60A5FA]/25 bg-[#60A5FA]/10"
+                    }`}
+                  >
+                    <p className="text-xs uppercase tracking-[0.18em] text-white/45">Annie&apos;s runway read</p>
+                    <p className="mt-2 text-sm font-medium text-white">{controlCenter.taskTracker.triage.title}</p>
+                    <p className="mt-1 text-sm text-white/70">{controlCenter.taskTracker.triage.note}</p>
+                  </div>
+                ) : null}
+
                 <div>
                   <SectionLabel label="Recent task flow" />
                   <div className="mt-2 space-y-3">

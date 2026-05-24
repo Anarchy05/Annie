@@ -11,6 +11,11 @@ export type ControlCenterData = {
   taskTracker: {
     headline: string;
     note: string;
+    triage?: {
+      tone: "danger" | "warning" | "info";
+      title: string;
+      note: string;
+    };
     summary: {
       running: number;
       queued: number;
@@ -110,6 +115,7 @@ export const emptyControlCenter: ControlCenterData = {
   taskTracker: {
     headline: "Annie is checking the task runway.",
     note: "Live task details will appear after local state loads.",
+    triage: undefined,
     summary: { running: 0, queued: 0, attention: 0, staleAttention: 0, completed: 0 },
     items: [],
   },

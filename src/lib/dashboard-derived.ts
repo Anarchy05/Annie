@@ -100,9 +100,16 @@ export type TaskTrackerItem = {
   repeatCount?: number;
 };
 
+export type TaskTrackerTriage = {
+  tone: "danger" | "warning" | "info";
+  title: string;
+  note: string;
+};
+
 export type TaskTrackerData = {
   headline: string;
   note: string;
+  triage?: TaskTrackerTriage;
   summary: {
     running: number;
     queued: number;
@@ -336,6 +343,57 @@ function getTaskStatusTone(status?: string): TaskTrackerItem["statusTone"] {
   return "other";
 }
 
+function classifyTaskFailure(task: TaskEntry) {
+  const detail = [task.summary, task.terminalSummary].filter(Boolean).join(" ").toLowerCase();
+
+  if (detail.includes("couldn't generate a response")) return "agent-response" as const;
+  if (detail.includes("model did not produce a response") || detail.includes("idle timeout")) return "model-timeout" as const;
+  if (detail.includes("timed out while waiting for the cli")) return "cli-timeout" as const;
+  return "other" as const;
+}
+
+function buildTaskTriage(attention: TaskEntry[], now = Date.now()): TaskTrackerTriage | undefined {
+  if (!attention.length) return undefined;
+
+  const counts = attention.reduce(
+    (summary, task) => {
+      summary[classifyTaskFailure(task)] += 1;
+      return summary;
+    },
+    { "agent-response": 0, "model-timeout": 0, "cli-timeout": 0, other: 0 }
+  );
+
+  const operationalCount = counts["agent-response"] + counts["model-timeout"] + counts["cli-timeout"];
+  const majorityOperational = operationalCount >= Math.max(2, Math.ceil(attention.length / 2));
+  const newestAttention = [...attention].sort((a, b) => getTaskTimestamp(b) - getTaskTimestamp(a))[0];
+
+  if (majorityOperational) {
+    const reasons = [
+      counts["agent-response"] ? `${counts["agent-response"]} agent response hiccup${counts["agent-response"] === 1 ? "" : "s"}` : null,
+      counts["model-timeout"] ? `${counts["model-timeout"]} model timeout${counts["model-timeout"] === 1 ? "" : "s"}` : null,
+      counts["cli-timeout"] ? `${counts["cli-timeout"]} CLI timeout${counts["cli-timeout"] === 1 ? "" : "s"}` : null,
+    ].filter(Boolean) as string[];
+
+    return {
+      tone: counts["agent-response"] > 0 ? "warning" : "info",
+      title:
+        operationalCount === attention.length
+          ? "Recent task failures look operational, not product-specific."
+          : "Most of the hot task failures look operational first.",
+      note: `${reasons.join(" · ")}. ${counts["agent-response"] > 0 ? "Verify any tool side effects before retrying those tasks." : "Retry the freshest task after the underlying runtime settles."}`,
+    };
+  }
+
+  const freshestTitle = newestAttention ? getTaskTitle(newestAttention) : "the freshest failed task";
+  const ageMinutes = newestAttention ? Math.max(Math.round((now - getTaskTimestamp(newestAttention)) / 60_000), 0) : 0;
+
+  return {
+    tone: "danger",
+    title: "A real task decision still looks hottest.",
+    note: `Start with ${freshestTitle}${newestAttention ? `${ageMinutes <= 1 ? " from just now" : ` from ${ageMinutes} min ago`}` : ""} before older failure noise piles up.`,
+  };
+}
+
 export function parsePriorityItems(raw: string) {
   const lines = raw.split("\n");
   const items: PriorityItem[] = [];
@@ -490,6 +548,7 @@ export function buildTaskTracker(tasks: TaskEntry[], now = Date.now()): TaskTrac
   return {
     headline,
     note,
+    triage: buildTaskTriage(attention, now),
     summary: {
       running: running.length,
       queued: queued.length,

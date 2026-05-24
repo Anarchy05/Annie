@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-24
+
+- Added an Annie-style runway triage layer to the feed's task panel so Mission Control now distinguishes likely operational/runtime hiccups (agent response stalls, model idle timeouts, CLI waits) from genuinely hot task failures, and tells the operator how to react instead of just listing failed rows.
+- Re-verified the runway-triage pass with clean `npm test`, `npm run lint`, and `npm run build` checks.
+
 ## 2026-05-23
 
 - Tightened Mission Control's top-level dashboard freshness so the control-center, automation watch, and task runway caches now invalidate as soon as their real local state changes instead of waiting out the old 10-20s TTLs; Annie's main dashboard cards now react much faster to task, cron-run, backlog, project, and session updates.

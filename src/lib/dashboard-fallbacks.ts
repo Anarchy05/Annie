@@ -9,6 +9,7 @@ export function buildFallbackControlCenterData(message = "Mission Control is wai
     taskTracker: {
       headline: "Annie is checking the task runway.",
       note: "Live task details will appear after local state loads.",
+      triage: undefined,
       summary: { running: 0, queued: 0, attention: 0, staleAttention: 0, completed: 0 },
       items: [],
     },
