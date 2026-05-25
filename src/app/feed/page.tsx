@@ -561,20 +561,39 @@ export default function FeedPage() {
                         action={<RefreshButton onClick={() => void loadAutomationWatch()}>Refresh automation watch</RefreshButton>}
                       />
                     ) : automationWatch ? (
-                      automationWatch.items.length ? (
-                        automationWatch.items.map((item) => (
-                          <ItemCard
-                            key={item.id}
-                            eyebrow={item.lastRunAt ? `Last run ${formatRelative(item.lastRunAt)}` : "No recent run logged"}
-                            title={item.title}
-                            detail={`${item.lastRunStatus} · ${item.lastRunSummary}`}
-                            status={item.status}
-                            highlight={item.status === "failing" || item.status === "warning"}
-                          />
-                        ))
-                      ) : (
-                        <EmptyPanel text="No automation health signals are available yet." />
-                      )
+                      <>
+                        {automationWatch.triage ? (
+                          <div
+                            className={`rounded-2xl border p-4 ${
+                              automationWatch.triage.tone === "danger"
+                                ? "border-red-400/30 bg-red-400/10"
+                                : automationWatch.triage.tone === "warning"
+                                  ? "border-yellow-400/30 bg-yellow-400/10"
+                                  : "border-[#60A5FA]/25 bg-[#60A5FA]/10"
+                            }`}
+                          >
+                            <p className="text-xs uppercase tracking-[0.18em] text-white/45">Annie&apos;s automation read</p>
+                            <p className="mt-2 text-sm font-medium text-white">{automationWatch.triage.title}</p>
+                            <p className="mt-1 text-sm text-white/70">{automationWatch.triage.note}</p>
+                          </div>
+                        ) : null}
+
+                        {automationWatch.items.length ? (
+                          automationWatch.items.map((item) => (
+                            <ItemCard
+                              key={item.id}
+                              eyebrow={item.lastRunAt ? `Last run ${formatRelative(item.lastRunAt)}` : "No recent run logged"}
+                              title={item.title}
+                              detail={`${item.lastRunStatus} · ${item.lastRunSummary}`}
+                              status={item.status}
+                              highlight={item.status === "failing" || item.status === "warning"}
+                              badgeLabel={item.nextRunAt ? formatRelativeFuture(item.nextRunAt) : undefined}
+                            />
+                          ))
+                        ) : (
+                          <EmptyPanel text="No automation health signals are available yet." />
+                        )}
+                      </>
                     ) : (
                       <div className="space-y-3">
                         {Array.from({ length: 2 }).map((_, index) => (

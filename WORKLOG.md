@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-25
+
+- Added an Annie-style automation triage layer to the feed's Automation Watch panel so Mission Control now distinguishes likely runtime hiccups (agent response stalls, model timeouts, CLI waits) from job-specific failures, tells the operator how to react, and badges each job with its next beat timing for faster recovery decisions.
+- Re-verified the automation-watch pass with clean `npm test`, `npm run lint`, and `npm run build` checks, then restarted the dashboard service and confirmed `/health` plus `/api/automation-watch` returned live with the new triage payload.
+
 ## 2026-05-24
 
 - Hardened Mission Control's dashboard data layer against partially malformed OpenClaw state by extracting resilient session/cron parsers into a dedicated `openclaw-state` module; the control-center, automation watch, and feed now salvage valid rows, surface clear degraded details about skipped bad entries, and stop dropping whole panels because of one broken JSON/JSONL record.

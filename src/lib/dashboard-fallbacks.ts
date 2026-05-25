@@ -49,6 +49,7 @@ export function buildFallbackAutomationWatchData(message = "Automation history i
     generatedAt: Date.now(),
     headline: "Automation watch is in a quiet degraded mode",
     note: message,
+    triage: undefined,
     summary: {
       failing: 0,
       warning: 0,

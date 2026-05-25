@@ -165,10 +165,17 @@ export type AutomationWatchItem = {
   status: "healthy" | "warning" | "failing" | "idle";
 };
 
+export type AutomationWatchTriage = {
+  tone: "danger" | "warning" | "info";
+  title: string;
+  note: string;
+};
+
 export type AutomationWatchData = {
   generatedAt: number;
   headline: string;
   note: string;
+  triage?: AutomationWatchTriage;
   summary: {
     failing: number;
     warning: number;
@@ -709,11 +716,88 @@ export function buildAttentionItems(
   return items.slice(0, 4);
 }
 
+function classifyAutomationFailure(run?: CronRunEntry) {
+  const detail = [run?.summary, run?.error, run?.skippedReason].filter(Boolean).join(" ").toLowerCase();
+
+  if (detail.includes("couldn't generate a response")) return "agent-response" as const;
+  if (detail.includes("model did not produce a response") || detail.includes("idle timeout")) return "model-timeout" as const;
+  if (detail.includes("timed out while waiting for the cli")) return "cli-timeout" as const;
+  if (detail.includes("skipped")) return "skipped" as const;
+  return "other" as const;
+}
+
+function buildAutomationWatchTriage(
+  items: AutomationWatchItem[],
+  latestRuns: Array<{ item: AutomationWatchItem; latestRun?: CronRunEntry }>,
+  now = Date.now()
+): AutomationWatchTriage | undefined {
+  const failingItems = latestRuns.filter(({ item }) => item.status === "failing");
+  const warningItems = latestRuns.filter(({ item }) => item.status === "warning");
+
+  if (failingItems.length) {
+    const counts = failingItems.reduce(
+      (summary, { latestRun }) => {
+        summary[classifyAutomationFailure(latestRun)] += 1;
+        return summary;
+      },
+      { "agent-response": 0, "model-timeout": 0, "cli-timeout": 0, skipped: 0, other: 0 }
+    );
+
+    const operationalCount = counts["agent-response"] + counts["model-timeout"] + counts["cli-timeout"];
+    const majorityOperational = operationalCount >= Math.max(2, Math.ceil(failingItems.length / 2));
+
+    if (majorityOperational) {
+      const reasons = [
+        counts["agent-response"] ? `${counts["agent-response"]} agent response hiccup${counts["agent-response"] === 1 ? "" : "s"}` : null,
+        counts["model-timeout"] ? `${counts["model-timeout"]} model timeout${counts["model-timeout"] === 1 ? "" : "s"}` : null,
+        counts["cli-timeout"] ? `${counts["cli-timeout"]} CLI timeout${counts["cli-timeout"] === 1 ? "" : "s"}` : null,
+      ].filter(Boolean) as string[];
+
+      return {
+        tone: counts["agent-response"] > 0 ? "warning" : "info",
+        title:
+          operationalCount === failingItems.length
+            ? "Recent automation failures look operational first."
+            : "Most failing automations look runtime-related first.",
+        note: `${reasons.join(" · ")}. ${counts["agent-response"] > 0 ? "Verify any tool side effects before retrying those jobs." : "Retry the freshest job after the runtime settles."}`,
+      };
+    }
+
+    const freshest = [...failingItems].sort(
+      (a, b) => (b.item.lastRunAt || 0) - (a.item.lastRunAt || 0)
+    )[0]?.item;
+    const ageMinutes = freshest?.lastRunAt ? Math.max(Math.round((now - freshest.lastRunAt) / 60_000), 0) : 0;
+
+    return {
+      tone: "danger",
+      title: "A real automation failure still looks hottest.",
+      note: `Start with ${freshest?.title || "the freshest failing job"}${freshest?.lastRunAt ? `${ageMinutes <= 1 ? " from just now" : ` from ${ageMinutes} min ago`}` : ""} before the next beat lands.`,
+    };
+  }
+
+  if (warningItems.length) {
+    const overdueItems = warningItems.filter(({ item }) => typeof item.nextRunAt === "number" && item.nextRunAt < now - 15 * 60_000);
+    const freshestWarning = [...warningItems].sort(
+      (a, b) => (a.item.nextRunAt || Number.MAX_SAFE_INTEGER) - (b.item.nextRunAt || Number.MAX_SAFE_INTEGER)
+    )[0]?.item;
+
+    return {
+      tone: overdueItems.length ? "warning" : "info",
+      title: overdueItems.length ? "A couple automation beats look late, not broken." : "Automation has a soft edge worth a quick look.",
+      note: overdueItems.length
+        ? `${overdueItems.length} scheduled beat${overdueItems.length === 1 ? " is" : "s are"} overdue. Check ${freshestWarning?.title || "the earliest warning job"} before the queue drifts further.`
+        : `${freshestWarning?.title || "One automation"} deserves a quick glance, but nothing looks hard-failed right now.`,
+    };
+  }
+
+  return undefined;
+}
+
 export function buildAutomationWatchDataModel(
   jobsWithRuns: Array<{ job: CronJob; runs: { entries: CronRunEntry[] } }>,
   now = Date.now()
 ): AutomationWatchData {
-  const items: AutomationWatchItem[] = jobsWithRuns.map(({ job, runs }) => {
+  const latestRuns = jobsWithRuns.map(({ job, runs }) => {
     const latestRun = [...runs.entries].sort(
       (a, b) => (b.startedAtMs || b.finishedAtMs || 0) - (a.startedAtMs || a.finishedAtMs || 0)
     )[0];
@@ -723,27 +807,31 @@ export function buildAutomationWatchDataModel(
     const status = overdue && baseStatus !== "failing" ? "warning" : baseStatus;
 
     return {
-      id: job.id,
-      title: job.name || "Untitled job",
-      detail:
-        job.description ||
-        job.payload?.message ||
-        job.payload?.text ||
-        job.schedule?.expr ||
-        job.schedule?.kind ||
-        "Scheduled job",
-      nextRunAt,
-      lastRunAt: latestRun?.startedAtMs || latestRun?.finishedAtMs,
-      lastRunStatus: latestRun?.status || "No runs yet",
-      lastRunSummary:
-        latestRun?.summary ||
-        latestRun?.error ||
-        latestRun?.skippedReason ||
-        (latestRun ? "No summary recorded" : "Annie hasn't logged a recent run yet."),
-      status,
+      latestRun,
+      item: {
+        id: job.id,
+        title: job.name || "Untitled job",
+        detail:
+          job.description ||
+          job.payload?.message ||
+          job.payload?.text ||
+          job.schedule?.expr ||
+          job.schedule?.kind ||
+          "Scheduled job",
+        nextRunAt,
+        lastRunAt: latestRun?.startedAtMs || latestRun?.finishedAtMs,
+        lastRunStatus: latestRun?.status || "No runs yet",
+        lastRunSummary:
+          latestRun?.summary ||
+          latestRun?.error ||
+          latestRun?.skippedReason ||
+          (latestRun ? "No summary recorded" : "Annie hasn't logged a recent run yet."),
+        status,
+      },
     };
   });
 
+  const items = latestRuns.map(({ item }) => item);
   const failing = items.filter((item) => item.status === "failing").length;
   const warning = items.filter((item) => item.status === "warning").length;
   const upcoming = items.filter(
@@ -770,6 +858,7 @@ export function buildAutomationWatchDataModel(
     generatedAt: now,
     headline,
     note,
+    triage: buildAutomationWatchTriage(items, latestRuns, now),
     summary: { failing, warning, upcoming },
     items: items
       .sort((a, b) => {

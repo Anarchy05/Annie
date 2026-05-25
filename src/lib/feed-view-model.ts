@@ -78,6 +78,11 @@ export type AutomationWatchData = {
   generatedAt: number;
   headline: string;
   note: string;
+  triage?: {
+    tone: "danger" | "warning" | "info";
+    title: string;
+    note: string;
+  };
   summary: {
     failing: number;
     warning: number;

@@ -326,6 +326,54 @@ test("buildAutomationWatchDataModel marks overdue healthy jobs as warnings and s
   assert.equal(data.summary.warning, 1);
   assert.equal(data.items[0]?.id, "failing");
   assert.equal(data.items[1]?.status, "warning");
+  assert.match(data.triage?.title || "", /failure/i);
+});
+
+test("buildAutomationWatchDataModel spots operational automation failures and gives retry guidance", () => {
+  const now = Date.UTC(2026, 4, 24, 0, 0, 0);
+  const data = buildAutomationWatchDataModel(
+    [
+      {
+        job: {
+          id: "job-1",
+          name: "Mission Control healthcheck",
+          state: { nextRunAtMs: now + 20 * 60_000 },
+        },
+        runs: {
+          entries: [
+            {
+              status: "error",
+              startedAtMs: now - 5 * 60_000,
+              summary: "⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying.",
+            },
+          ],
+        },
+      },
+      {
+        job: {
+          id: "job-2",
+          name: "Repo daily healthcheck",
+          state: { nextRunAtMs: now + 30 * 60_000 },
+        },
+        runs: {
+          entries: [
+            {
+              status: "failed",
+              startedAtMs: now - 10 * 60_000,
+              summary: "The model did not produce a response before the model idle timeout.",
+            },
+          ],
+        },
+      },
+    ],
+    now
+  );
+
+  assert.equal(data.summary.failing, 2);
+  assert.equal(data.triage?.tone, "warning");
+  assert.match(data.triage?.title || "", /operational|runtime/i);
+  assert.match(data.triage?.note || "", /agent response hiccup/i);
+  assert.match(data.triage?.note || "", /verify any tool side effects/i);
 });
 
 test("splitMarkdownBlocks recognizes headings, blockquotes, tables, and fenced code", () => {
