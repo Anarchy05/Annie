@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { PageShell } from "@/components/page-shell";
 import { StatePanel } from "@/components/state-panels";
 
@@ -13,6 +13,8 @@ type SearchResults = {
 };
 
 const emptyResults: SearchResults = { memories: [], files: [], conversations: [], tasks: [] };
+const RECENT_SEARCHES_KEY = "annie-mission-control-recent-searches";
+const MAX_RECENT_SEARCHES = 6;
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -20,6 +22,9 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResults>(emptyResults);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => readRecentSearches());
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const latestRequestId = useRef(0);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -27,12 +32,39 @@ export default function SearchPage() {
   }, [query]);
 
   useEffect(() => {
-    let mounted = true;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const targetTag = target instanceof HTMLElement ? target.tagName : "";
+      const isTypingField =
+        target instanceof HTMLElement &&
+        (targetTag === "INPUT" || targetTag === "TEXTAREA" || target.isContentEditable);
+
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingField) {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+
+      if (event.key === "Escape" && document.activeElement === inputRef.current) {
+        inputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     if (!debouncedQuery) {
+      latestRequestId.current += 1;
       return () => {
-        mounted = false;
+        cancelled = true;
       };
     }
+
+    const requestId = latestRequestId.current + 1;
+    latestRequestId.current = requestId;
 
     const load = async () => {
       setLoading(true);
@@ -40,23 +72,26 @@ export default function SearchPage() {
         const response = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Search is unavailable right now.");
         const data = (await response.json()) as SearchResults;
-        if (mounted) {
+        if (!cancelled && requestId === latestRequestId.current) {
           setResults(data);
           setError(null);
+          rememberSearch(debouncedQuery, setRecentSearches);
         }
       } catch (err) {
-        if (mounted) {
+        if (!cancelled && requestId === latestRequestId.current) {
           setResults(emptyResults);
           setError(err instanceof Error ? err.message : "Search is unavailable right now.");
         }
       } finally {
-        if (mounted) setLoading(false);
+        if (!cancelled && requestId === latestRequestId.current) {
+          setLoading(false);
+        }
       }
     };
 
     void load();
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, [debouncedQuery]);
 
@@ -125,6 +160,7 @@ export default function SearchPage() {
   );
 
   const totalResults = sections.reduce((sum, section) => sum + section.items.length, 0);
+  const topResultSection = sections.find((section) => section.items.length > 0);
 
   return (
     <PageShell>
@@ -133,12 +169,66 @@ export default function SearchPage() {
         <h2 className="mt-1 text-2xl font-semibold text-white">Find anything fast</h2>
         <div className="mt-5">
           <input
+            ref={inputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              const nextQuery = event.target.value;
+              setQuery(nextQuery);
+              if (!nextQuery.trim()) {
+                setError(null);
+                setLoading(false);
+              }
+            }}
             placeholder="Search memories, files, sessions, and tasks..."
             className="w-full rounded-2xl border border-[#2A2A3E] bg-[#0E1020] px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-[#60A5FA]"
           />
+          <div className="mt-3 flex flex-col gap-3 text-sm text-white/55 sm:flex-row sm:items-center sm:justify-between">
+            <p>Annie can search memories, repo files, session labels, and automation notes from one box.</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-white/35">Press / to focus · Esc to step back</p>
+          </div>
         </div>
+
+        {recentSearches.length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {recentSearches.map((recent) => (
+              <button
+                key={recent}
+                type="button"
+                onClick={() => setQuery(recent)}
+                className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/20 hover:text-white"
+              >
+                {recent}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {debouncedQuery && !error && !loading ? (
+          <div className="mt-5 rounded-2xl border border-[#2A2A3E] bg-black/20 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-white/35">Search read</p>
+                <p className="mt-1 text-sm text-white/80">
+                  {totalResults ? (
+                    <>
+                      Annie found <span className="font-medium text-white">{totalResults}</span> match{totalResults === 1 ? "" : "es"}
+                      {topResultSection ? `, led by ${topResultSection.title.toLowerCase()}.` : "."}
+                    </>
+                  ) : (
+                    <>Annie didn&apos;t find a clean match yet.</>
+                  )}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {sections.map((section) => (
+                  <span key={section.title} className="rounded-full border border-white/10 bg-[#0E1020] px-3 py-1.5 text-white/65">
+                    {section.title} · {section.items.length}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-6">
@@ -166,7 +256,7 @@ export default function SearchPage() {
           <div className="mt-6">
             <StatePanel
               title="Start with a keyword"
-              detail="Search across memories, repo files, sessions, and cron jobs from one place."
+              detail={recentSearches.length ? "Pick a recent search or type a keyword to scan memories, repo files, sessions, and cron jobs from one place." : "Search across memories, repo files, sessions, and cron jobs from one place."}
             />
           </div>
         ) : !totalResults ? (
@@ -200,7 +290,7 @@ export default function SearchPage() {
   );
 }
 
-function ResultLink({ href, children }: { href: string; children: React.ReactNode }) {
+function ResultLink({ href, children }: { href: string; children: ReactNode }) {
   const external = href.startsWith("/api/");
 
   if (external) {
@@ -237,4 +327,32 @@ function highlight(text: string, query: string) {
       <span key={`${part}-${index}`}>{part}</span>
     )
   );
+}
+
+function readRecentSearches() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const saved = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string").slice(0, MAX_RECENT_SEARCHES);
+  } catch {
+    return [];
+  }
+}
+
+function rememberSearch(query: string, setRecentSearches: Dispatch<SetStateAction<string[]>>) {
+  setRecentSearches((current) => {
+    const next = [query, ...current.filter((item) => item.toLowerCase() !== query.toLowerCase())].slice(0, MAX_RECENT_SEARCHES);
+
+    try {
+      window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore localStorage write issues.
+    }
+
+    return next;
+  });
 }

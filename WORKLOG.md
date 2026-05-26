@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-26
+
+- Improved Mission Control search so Annie now remembers recent queries locally, supports `/` to jump straight into the search box plus `Esc` to step back out, and shows a cleaner result-summary strip with per-section counts for faster scanning.
+- Hardened the search page against stale in-flight responses winning after a newer query, then re-verified the pass with clean `npm run lint` and `npm run build` checks, restarted the dashboard service, and confirmed `/health` plus `/search` returned live.
+
 ## 2026-05-25
 
 - Added an Annie-style automation triage layer to the feed's Automation Watch panel so Mission Control now distinguishes likely runtime hiccups (agent response stalls, model timeouts, CLI waits) from job-specific failures, tells the operator how to react, and badges each job with its next beat timing for faster recovery decisions.
