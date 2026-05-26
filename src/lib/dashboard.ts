@@ -31,6 +31,7 @@ import {
 } from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { normalizeCronJobs, normalizeCronRunEntry, normalizeSessionsIndex, parseJsonLines } from "@/lib/openclaw-state";
+import { getFileVersion, combineVersionParts, getTreeVersion } from "@/lib/fs-version";
 import { listProjects } from "@/lib/projects";
 import { classifyRouteSpeed, getRouteDiagnostics } from "@/lib/route-diagnostics";
 import { runtimeCache } from "@/lib/runtime-cache";
@@ -47,6 +48,8 @@ const OPENCLAW_TASKS_DB_WAL = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-wal");
 const OPENCLAW_TASKS_DB_SHM = path.join(OPENCLAW_TASKS_DIR, "runs.sqlite-shm");
 const TODO_FILE = "/root/projects/mission-control/TODO.md";
 const PROJECTS_FILE = "/root/projects/mission-control/state/projects.json";
+const SEARCH_FILE_ROOTS = ["/root/.openclaw/workspace", "/root/projects/mission-control"];
+const SEARCH_FILE_IGNORE_DIRS = [".git", ".next", "node_modules"];
 
 type MessagePart = {
   type: "text" | "toolCall" | "thinking" | string;
@@ -137,25 +140,12 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
-async function getFileVersion(filePath: string) {
-  try {
-    const stats = await fs.stat(filePath);
-    return `${Math.floor(stats.mtimeMs)}:${stats.size}`;
-  } catch {
-    return "missing";
-  }
-}
-
 async function runOpenClawText(args: string[], timeout = 15_000) {
   const { stdout } = await execFileAsync("openclaw", args, {
     timeout,
     maxBuffer: 10 * 1024 * 1024,
   });
   return stdout.trim();
-}
-
-function combineVersionParts(parts: Array<string | number | null | undefined>) {
-  return parts.map((part) => String(part ?? "missing")).join("|");
 }
 
 async function getTaskStateVersion() {
@@ -182,6 +172,13 @@ async function getCronRunsAggregateVersion() {
   } catch {
     return "missing";
   }
+}
+
+async function getSearchFileStateVersion() {
+  const versions = await Promise.all(
+    SEARCH_FILE_ROOTS.map((rootPath) => getTreeVersion(rootPath, { ignoreDirs: SEARCH_FILE_IGNORE_DIRS }))
+  );
+  return combineVersionParts(versions);
 }
 
 export async function getSessions() {
@@ -731,10 +728,11 @@ export async function buildSearchResults(query: string) {
     };
   }
 
-  const version = [
+  const version = combineVersionParts([
     await getFileVersion(OPENCLAW_SESSIONS_INDEX),
     await getFileVersion(OPENCLAW_CRON_JOBS_FILE),
-  ].join("|");
+    await getSearchFileStateVersion(),
+  ]);
 
   return runtimeCache.withCache(`search:${normalizedQuery.toLowerCase()}`, 3_000, async () => {
     const [memoryResults, sessions, cronResults, grepText] = await Promise.all([
@@ -752,7 +750,7 @@ export async function buildSearchResults(query: string) {
         "bash",
         [
           "-lc",
-          `grep -RIn --exclude-dir=node_modules --exclude-dir=.git ${JSON.stringify(normalizedQuery)} /root/.openclaw/workspace /root/projects/mission-control 2>/dev/null | head -40`,
+          `grep -RIn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.next ${JSON.stringify(normalizedQuery)} /root/.openclaw/workspace /root/projects/mission-control 2>/dev/null | head -40`,
         ],
         { timeout: 10_000, maxBuffer: 5 * 1024 * 1024 }
       )
