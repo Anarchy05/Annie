@@ -122,3 +122,4 @@ Core goals:
 - [x] Tightened the task-runway signal so older failed tasks no longer inflate Annie's live attention count, while still surfacing a separate older-failure indicator when useful.
 - [x] Grouped repeated recent task failures/completions into cleaner runway cards with repeat counts so one noisy automation no longer floods Mission Control.
 - [x] Added automation-watch triage guidance so Mission Control can distinguish likely runtime hiccups from job-specific failures and show next-beat timing directly on each automation card.
+- [x] Added a global Annie search launcher plus URL-synced search page flow so Mission Control can jump into `/search?q=...` from anywhere and keep recent-search handoffs cleaner.

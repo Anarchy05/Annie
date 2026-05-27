@@ -13,6 +13,9 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ## 2026-05-26
 
+- Added a global Annie search launcher to the top nav so Mission Control now lets the operator jump into search from anywhere with `/`, submit directly into `/search?q=...`, and keep Annie's search flow feeling much more like a command surface than a hidden page.
+- Upgraded the search page so it now accepts URL-backed queries, lands focused and ready to type, and gives recent searches a cleaner "Recent jumps" panel with a one-tap clear action for less clutter.
+- Reworked the search route into a server wrapper plus client component so the new URL-synced search UX stays compatible with Next's prerender/build rules; re-verified the pass with clean `npm run lint` and `npm run build` checks.
 - Improved Mission Control search so Annie now remembers recent queries locally, supports `/` to jump straight into the search box plus `Esc` to step back out, and shows a cleaner result-summary strip with per-section counts for faster scanning.
 - Hardened the search page against stale in-flight responses winning after a newer query, then re-verified the pass with clean `npm run lint` and `npm run build` checks, restarted the dashboard service, and confirmed `/health` plus `/search` returned live.
 
