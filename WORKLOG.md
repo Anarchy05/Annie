@@ -11,6 +11,11 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-28
+
+- Tightened Mission Control's search invalidation path by caching expensive workspace/repo tree-version scans for a short window, so Annie can still notice file changes quickly without paying for a full filesystem walk before nearly every search read.
+- Added focused cache coverage for the new tree-version reader, then re-verified the pass with clean `npm test`, `npm run lint`, and `npm run build` checks; the dashboard was down at the start of the pass, so Annie also restarted it and re-checked `/health` plus `/api/search`.
+
 ## 2026-05-26
 
 - Added a global Annie search launcher to the top nav so Mission Control now lets the operator jump into search from anywhere with `/`, submit directly into `/search?q=...`, and keep Annie's search flow feeling much more like a command surface than a hidden page.

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promises as fs } from "node:fs";
 
-import { getFileVersion, getTreeVersion } from "../src/lib/fs-version.ts";
+import { createCachedTreeVersionReader, getFileVersion, getTreeVersion } from "../src/lib/fs-version.ts";
 
 test("getFileVersion returns missing for absent files", async () => {
   const missing = await getFileVersion(path.join(os.tmpdir(), `annie-missing-${Date.now()}`));
@@ -32,6 +32,33 @@ test("getTreeVersion ignores configured directories and changes when tracked fil
 
     const afterTrackedChange = await getTreeVersion(root, { ignoreDirs: [".next"] });
     assert.notEqual(afterTrackedChange, beforeIgnoredChange);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("createCachedTreeVersionReader reuses a recent tree scan until its TTL expires", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "annie-tree-version-"));
+  let now = 1_000;
+
+  try {
+    const filePath = path.join(root, "notes.txt");
+    await fs.writeFile(filePath, "hello\n", "utf8");
+
+    const reader = createCachedTreeVersionReader(() => now);
+    const first = await reader.get(root, {}, 5_000);
+
+    const nextMtime = new Date(Date.now() + 60_000);
+    await fs.writeFile(filePath, "hello again\n", "utf8");
+    await fs.utimes(filePath, nextMtime, nextMtime);
+
+    const cached = await reader.get(root, {}, 5_000);
+    assert.equal(cached, first);
+
+    now += 5_001;
+    const refreshed = await reader.get(root, {}, 5_000);
+    assert.notEqual(refreshed, first);
+    assert.equal(refreshed, await getTreeVersion(root));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

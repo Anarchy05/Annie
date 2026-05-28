@@ -31,7 +31,7 @@ import {
 } from "@/lib/cron-state";
 import { invokeOpenClaw } from "@/lib/openclaw";
 import { normalizeCronJobs, normalizeCronRunEntry, normalizeSessionsIndex, parseJsonLines } from "@/lib/openclaw-state";
-import { getFileVersion, combineVersionParts, getTreeVersion } from "@/lib/fs-version";
+import { getCachedTreeVersion, getFileVersion, combineVersionParts } from "@/lib/fs-version";
 import { listProjects } from "@/lib/projects";
 import { classifyRouteSpeed, getRouteDiagnostics } from "@/lib/route-diagnostics";
 import { runtimeCache } from "@/lib/runtime-cache";
@@ -176,7 +176,7 @@ async function getCronRunsAggregateVersion() {
 
 async function getSearchFileStateVersion() {
   const versions = await Promise.all(
-    SEARCH_FILE_ROOTS.map((rootPath) => getTreeVersion(rootPath, { ignoreDirs: SEARCH_FILE_IGNORE_DIRS }))
+    SEARCH_FILE_ROOTS.map((rootPath) => getCachedTreeVersion(rootPath, { ignoreDirs: SEARCH_FILE_IGNORE_DIRS }, 15_000))
   );
   return combineVersionParts(versions);
 }
