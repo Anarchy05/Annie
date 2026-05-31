@@ -88,7 +88,7 @@ Core goals:
 ### P1 - Chat Experience
 
 - [x] Improve markdown rendering with better tables, blockquotes, and links.
-- [ ] Explore streaming-style replies if a safe backend path exists.
+- [x] Explore streaming-style replies if a safe backend path exists. (Decided against: chat backend uses blocking `openclaw agent` CLI exec returning full JSON reply; no safe incremental streaming path without external changes.)
 
 ### P1 - Mission Control UX
 

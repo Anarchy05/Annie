@@ -11,6 +11,9 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-05-31
+- Resolved open P1 chat item: explored streaming replies; decided against pursuing because the chat backend relies on a blocking `openclaw agent` CLI exec (full JSON response); no safe incremental path exists without changes outside this repo.
+
 ## 2026-05-28
 
 - Tightened Mission Control's search invalidation path by caching expensive workspace/repo tree-version scans for a short window, so Annie can still notice file changes quickly without paying for a full filesystem walk before nearly every search read.
