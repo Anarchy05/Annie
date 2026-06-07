@@ -11,6 +11,9 @@ This file tracks meaningful standby work Annie performs on this repository.
 
 ---
 
+## 2026-06-07
+- Weekly refactor pass: inspected architecture post-recent splits (dashboard-derived, feed-view-model, openclaw-state, api-route wrapper). Repo state is clean and maintainable; no larger structural refactor warranted at this time without introducing risk. Verified build/lint/test health. Recommend continuing disciplined extraction only when modules exceed ~900 LOC or new cross-cutting concerns appear.
+
 ## 2026-05-31
 - Resolved open P1 chat item: explored streaming replies; decided against pursuing because the chat backend relies on a blocking `openclaw agent` CLI exec (full JSON response); no safe incremental path exists without changes outside this repo.
 
